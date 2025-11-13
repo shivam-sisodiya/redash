@@ -40,7 +40,7 @@ class JSONText(TypeDecorator):
         return json_dumps(value)
 
     def process_result_value(self, value, dialect):
-        if not value:
+        if not value or type(value) is dict:
             return value
         return json_loads(value)
 

@@ -1,7 +1,7 @@
 import csv
 import io
-
 import xlsxwriter
+from fpdf import FPDF
 from dateutil.parser import isoparse as parse_date
 from funcy import project, rpartial
 
@@ -122,3 +122,29 @@ def serialize_query_result_to_xlsx(query_result):
     book.close()
 
     return output.getvalue()
+
+def serialize_query_result_to_pdf(query_result):
+    query_data = query_result.data
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+
+    column_names = [col["name"] for col in query_data["columns"]]
+
+    # Header row
+    for name in column_names:
+        pdf.cell(40, 10, name, border=1)
+    pdf.ln()
+
+    # Data rows
+    for row in query_data["rows"]:
+        for name in column_names:
+            v = row.get(name)
+            if isinstance(v, (dict, list)):
+                v = str(v)
+            pdf.cell(40, 10, str(v), border=1)
+        pdf.ln()
+
+    # Output as bytes
+    pdf_bytes = pdf.output(dest="S").encode("latin1")  # FPDF returns str
+    return pdf_bytes

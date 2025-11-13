@@ -36,7 +36,6 @@ function VisualizationEmbedHeader({ queryName, queryDescription, visualization }
   return (
     <div className="embed-heading p-b-10 p-r-15 p-l-15">
       <h3>
-        <img src={logoUrl} alt="Redash Logo" style={{ height: "24px", verticalAlign: "text-bottom" }} />
         <VisualizationName visualization={visualization} /> {queryName}
         {queryDescription && (
           <small>
@@ -98,6 +97,17 @@ function VisualizationEmbedFooter({
           disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
           embed>
           <FileExcelOutlinedIcon /> Download as Excel File
+        </QueryResultsLink>
+      </Menu.Item>
+      <Menu.Item>
+        <QueryResultsLink
+          fileType="pdf"
+          query={query}
+          queryResult={queryResults}
+          apiKey={apiKey}
+          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
+          embed>
+          <FileExcelOutlinedIcon /> Download as Pdf File
         </QueryResultsLink>
       </Menu.Item>
     </Menu>

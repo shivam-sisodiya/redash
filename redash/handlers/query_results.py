@@ -27,6 +27,7 @@ from redash.serializers import (
     serialize_query_result,
     serialize_query_result_to_dsv,
     serialize_query_result_to_xlsx,
+    serialize_query_result_to_pdf,
 )
 from redash.tasks import Job
 from redash.tasks.queries import enqueue_query
@@ -353,6 +354,7 @@ class QueryResultResource(BaseResource):
             response_builders = {
                 "json": self.make_json_response,
                 "xlsx": self.make_excel_response,
+                "pdf": self.make_pdf_response,
                 "csv": self.make_csv_response,
                 "tsv": self.make_tsv_response,
             }
@@ -395,6 +397,10 @@ class QueryResultResource(BaseResource):
         headers = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
         return make_response(serialize_query_result_to_xlsx(query_result), 200, headers)
 
+    @staticmethod
+    def make_pdf_response(query_result):
+        headers = {"Content-Type": "application/pdf"}
+        return make_response(serialize_query_result_to_pdf(query_result), 200, headers)
 
 class JobResource(BaseResource):
     def get(self, job_id, query_id=None):
