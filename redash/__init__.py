@@ -8,6 +8,7 @@ from flask_limiter.util import get_remote_address
 from flask_mail import Mail
 from flask_migrate import Migrate
 from statsd import StatsClient
+from minio import Minio
 
 from redash import settings
 from redash.app import create_app  # noqa
@@ -50,6 +51,12 @@ mail = Mail()
 migrate = Migrate(compare_type=True)
 statsd_client = StatsClient(host=settings.STATSD_HOST, port=settings.STATSD_PORT, prefix=settings.STATSD_PREFIX)
 limiter = Limiter(key_func=get_remote_address, storage_uri=settings.LIMITER_STORAGE)
+minio_client = Minio(
+    "localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    secure=False,
+)
 
 import_query_runners(settings.QUERY_RUNNERS)
 import_destinations(settings.DESTINATIONS)

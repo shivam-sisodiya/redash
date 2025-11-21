@@ -57,7 +57,7 @@ error_messages = {
 }
 
 
-def run_query(query, parameters, data_source, query_id, should_apply_auto_limit, max_age=0):
+def run_query(query, parameters, data_source, query_id, should_apply_auto_limit, for_export, max_age=0):
     if not data_source:
         return error_messages["no_data_source"]
 
@@ -88,7 +88,7 @@ def run_query(query, parameters, data_source, query_id, should_apply_auto_limit,
         current_user.org,
         current_user,
         {
-            "action": "execute_query",
+            "action": "execute_query" if not for_export else "export_query",
             "cache": "hit" if query_result else "miss",
             "object_id": data_source.id,
             "object_type": "data_source",
@@ -105,6 +105,7 @@ def run_query(query, parameters, data_source, query_id, should_apply_auto_limit,
             query_text,
             data_source,
             current_user.id,
+            for_export,
             current_user.is_api_user(),
             metadata={
                 "Username": current_user.get_actual_user(),
@@ -251,6 +252,7 @@ class QueryResultResource(BaseResource):
                                 always execute.
         """
         params = request.get_json(force=True, silent=True) or {}
+        for_export = request.args.get("for_export", False)
         parameter_values = params.get("parameters", {})
 
         max_age = params.get("max_age", -1)
@@ -274,6 +276,7 @@ class QueryResultResource(BaseResource):
                 query.data_source,
                 query_id,
                 should_apply_auto_limit,
+                for_export,
                 max_age,
             )
         else:

@@ -251,6 +251,10 @@ class QueryResult {
     return this.query_result.data ? this.query_result.data.rows : null;
   }
 
+  getBucketUrl() {
+    return this.query_result.bucket_url;
+  }
+
   isEmpty() {
     return this.getData() === null || this.getData().length === 0;
   }
@@ -456,11 +460,12 @@ class QueryResult {
     return `${queryName.replace(/ /g, "_") + moment(this.getUpdatedAt()).format("_YYYY_MM_DD")}.${fileType}`;
   }
 
-  static getByQueryId(id, parameters, applyAutoLimit, maxAge) {
+  static getByQueryId(id, parameters, applyAutoLimit, maxAge, forExport) {
     const queryResult = new QueryResult();
-
+    // eslint-disable-next-line no-console
+    console.log("Fetching QueryResult for query ID:", id, "with parameters:", parameters, "applyAutoLimit:", applyAutoLimit, "maxAge:", maxAge, "forExport:", forExport);
     axios
-      .post(`api/queries/${id}/results`, { id, parameters, apply_auto_limit: applyAutoLimit, max_age: maxAge })
+      .post(`api/queries/${id}/results?for_export=${forExport}`, { id, parameters, apply_auto_limit: applyAutoLimit, max_age: maxAge })
       .then((response) => {
         queryResult.update(response);
 

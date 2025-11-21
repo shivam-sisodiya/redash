@@ -320,6 +320,7 @@ class QueryResult(db.Model, BelongsToOrgMixin):
     data = Column(JSONText, nullable=True)
     runtime = Column(DOUBLE_PRECISION)
     retrieved_at = Column(db.DateTime(True))
+    bucket_url = Column(db.String(255), nullable=True)
 
     __tablename__ = "query_results"
 
@@ -335,6 +336,7 @@ class QueryResult(db.Model, BelongsToOrgMixin):
             "data_source_id": self.data_source_id,
             "runtime": self.runtime,
             "retrieved_at": self.retrieved_at,
+            "bucket_url": self.bucket_url,
         }
 
     @classmethod

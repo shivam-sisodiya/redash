@@ -8,6 +8,7 @@ except ImportError:
 
 
 from base64 import b64decode
+from contextlib import contextmanager
 
 from redash import __version__
 from redash.query_runner import (
@@ -143,6 +144,55 @@ class Snowflake(BaseSQLQueryRunner):
 
         data = {"columns": columns, "rows": rows}
         return data
+
+    @contextmanager
+    def stream(self, query, chunk_size=5000):
+        """Streams results of a query in chunks."""
+        connection = None
+        cursor = None
+
+        try:
+            connection = self._get_connection()
+            cursor = connection.cursor()
+
+            cursor.execute(f"USE WAREHOUSE {self.configuration['warehouse']}")
+            cursor.execute(f"USE {self.configuration['database']}")
+            cursor.execute(query)
+
+            # Column metadata
+            columns = self.fetch_columns(
+                [(self._column_name(i[0]), self.determine_type(i[1], i[5])) for i in cursor.description]
+            )   
+            # Streaming generator
+            def row_generator():
+                cursor.arraysize = chunk_size
+                while True:
+                    rows = cursor.fetchmany()
+                    if not rows:
+                        break
+                    for row in rows:
+                        yield dict(zip((c["name"] for c in columns), row))
+
+            # Provide (columns, generator) to user
+            yield columns, row_generator()
+
+        except Exception as exc:
+            # Propagate exception to caller
+            raise
+
+        finally:
+            # ALWAYS RUNS — even on break, error, or partial iteration
+            try:
+                if cursor:
+                    cursor.close()
+            except Exception:
+                pass
+
+            try:
+                if connection:
+                    connection.close()
+            except Exception:
+                pass
 
     def run_query(self, query, user):
         connection = self._get_connection()

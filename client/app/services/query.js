@@ -131,9 +131,9 @@ export class Query {
     return this.queryResult;
   }
 
-  getQueryResult(maxAge) {
+  getQueryResult(maxAge, forExport) {
     const execute = () =>
-      QueryResult.getByQueryId(this.id, this.getParameters().getExecutionValues(), this.getAutoLimit(), maxAge);
+      QueryResult.getByQueryId(this.id, this.getParameters().getExecutionValues(), this.getAutoLimit(), maxAge, forExport);
     return this.prepareQueryResultExecution(execute, maxAge);
   }
 
@@ -176,8 +176,8 @@ export class Query {
     return url;
   }
 
-  getQueryResultPromise() {
-    return this.getQueryResult().toPromise();
+  getQueryResultPromise(maxAge, forExport) {
+    return this.getQueryResult(maxAge, forExport).toPromise();
   }
 
   getParameters() {

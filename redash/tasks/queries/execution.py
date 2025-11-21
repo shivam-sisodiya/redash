@@ -1,7 +1,9 @@
+from datetime import timedelta
 import signal
 import sys
 import time
 from collections import deque
+from reportlab.pdfgen import canvas
 
 import redis
 from rq import get_current_job
@@ -9,12 +11,12 @@ from rq.exceptions import NoSuchJobError
 from rq.job import JobStatus
 from rq.timeouts import JobTimeoutException
 
-from redash import models, redis_connection, settings
+from redash import models, redis_connection, settings, minio_client
 from redash.query_runner import InterruptException
 from redash.tasks.alerts import check_alerts_for_query
 from redash.tasks.failure_report import track_failure
 from redash.tasks.worker import Job, Queue
-from redash.utils import gen_query_hash, utcnow
+from redash.utils import gen_query_hash, utcnow, streaming_buffer
 from redash.worker import get_job_logger
 
 logger = get_job_logger(__name__)
@@ -29,7 +31,7 @@ def _unlock(query_hash, data_source_id):
     redis_connection.delete(_job_lock_id(query_hash, data_source_id))
 
 
-def enqueue_query(query, data_source, user_id, is_api_key=False, scheduled_query=None, metadata={}):
+def enqueue_query(query, data_source, user_id, for_export=False, is_api_key=False, scheduled_query=None, metadata={}):
     query_hash = gen_query_hash(query)
     logger.info("Inserting job for %s with metadata=%s", query_hash, metadata)
     try_count = 0
@@ -101,7 +103,7 @@ def enqueue_query(query, data_source, user_id, is_api_key=False, scheduled_query
                 if not scheduled_query:
                     enqueue_kwargs["result_ttl"] = settings.JOB_EXPIRY_TIME
 
-                job = queue.enqueue(execute_query, query, data_source.id, metadata, **enqueue_kwargs)
+                job = queue.enqueue(execute_query, query, data_source.id, metadata, for_export, **enqueue_kwargs)
 
                 logger.info("[%s] Created new job: %s", query_hash, job.id)
                 pipe.set(
@@ -172,7 +174,7 @@ def _get_size_iterative(dict_obj):
 
 
 class QueryExecutor:
-    def __init__(self, query, data_source_id, user_id, is_api_key, metadata, is_scheduled_query):
+    def __init__(self, query, data_source_id, user_id, is_api_key, metadata, is_scheduled_query, for_export):
         self.job = get_current_job()
         self.query = query
         self.data_source_id = data_source_id
@@ -185,6 +187,7 @@ class QueryExecutor:
             if self.query_id and self.query_id != "adhoc"
             else None
         )  # fmt: skip
+        self.for_export = for_export
 
         # Close DB connection to prevent holding a connection for a long time while the query is executing.
         models.db.session.close()
@@ -193,6 +196,36 @@ class QueryExecutor:
         if self.is_scheduled_query:
             # Load existing tracker or create a new one if the job was created before code update:
             models.scheduled_queries_executions.update(self.query_model.id)
+
+    def _run_query_with_error_handling(self, query_runner, annotated_query):
+        """Runs the query and handles errors appropriately."""
+        data = None
+        error = None
+        try:
+            data, error = query_runner.run_query(annotated_query, self.user)
+        except Exception as e:
+            if isinstance(e, JobTimeoutException):
+                error = TIMEOUT_MESSAGE
+            else:
+                error = str(e)
+            data = None
+            logger.warning("Unexpected error while running query:", exc_info=1)
+        
+        return data, error
+
+    def _run_query_for_export(self, query_runner, annotated_query):
+        """Runs the query for export and handles errors appropriately."""
+        presigned_url = None
+        error = None
+        try:
+            with query_runner.stream(annotated_query, chunk_size=5000) as (columns, row_generator):
+                pdf_stream = generate_pdf_stream(row_generator, columns)
+                presigned_url = upload_pdf_stream("reports", f"query_{self.query_hash}.pdf", pdf_stream)
+        except Exception as exc:
+            logger.warning("Unexpected error while running query for export:", exc_info=1)
+            error = exc
+        
+        return presigned_url, error
 
     def run(self):
         signal.signal(signal.SIGINT, signal_handler)
@@ -204,16 +237,12 @@ class QueryExecutor:
         query_runner = self.data_source.query_runner
         annotated_query = self._annotate_query(query_runner)
 
-        try:
-            data, error = query_runner.run_query(annotated_query, self.user)
-        except Exception as e:
-            if isinstance(e, JobTimeoutException):
-                error = TIMEOUT_MESSAGE
-            else:
-                error = str(e)
-
-            data = None
-            logger.warning("Unexpected error while running query:", exc_info=1)
+        data = None
+        error = None
+        if not self.for_export:
+            data, error = self._run_query_with_error_handling(query_runner, annotated_query)
+        else:
+            data, error = self._run_query_for_export(query_runner, annotated_query)
 
         run_time = time.time() - started_at
 
@@ -227,7 +256,7 @@ class QueryExecutor:
 
         _unlock(self.query_hash, self.data_source.id)
 
-        if error is not None and data is None:
+        if not self.for_export and error is not None and data is None:
             result = QueryExecutionError(error)
             if self.is_scheduled_query:
                 self.query_model = models.db.session.merge(self.query_model, load=False)
@@ -240,16 +269,26 @@ class QueryExecutor:
                 self.query_model.skip_updated_at = True
                 models.db.session.add(self.query_model)
 
-            query_result = models.QueryResult.store_result(
-                self.data_source.org_id,
-                self.data_source,
-                self.query_hash,
-                self.query,
-                data,
-                run_time,
-                utcnow(),
-            )
+            # Store the results of the query execution.
+            if not self.for_export:
+                query_result = models.QueryResult.store_result(
+                    self.data_source.org_id,
+                    self.data_source,
+                    self.query_hash,
+                    self.query,
+                    data,
+                    run_time,
+                    utcnow(),
+                )
+            else:
+                # For exports, we update the latest query result with the presigned URL
+                query_result = models.QueryResult.get_latest(self.data_source, self.query, -1)
+                if not query_result:
+                    raise QueryExecutionError("No previous query result found for export.")
 
+                query_result.bucket_url = data
+                models.db.session.add(query_result)
+                    
             updated_query_ids = models.Query.update_latest_result(query_result)
 
             models.db.session.commit()  # make sure that alert sees the latest query result
@@ -266,8 +305,14 @@ class QueryExecutor:
         self.metadata["Job ID"] = self.job.id
         self.metadata["Query Hash"] = self.query_hash
         self.metadata["Scheduled"] = self.is_scheduled_query
+        query = self.query
 
-        return query_runner.annotate_query(self.query, self.metadata)
+        # For exports, we remove any limit clause from the query
+        if self.for_export:
+            self.metadata["For Export"] = True
+            query = query_runner.remove_limit_from_query(query)
+
+        return query_runner.annotate_query(query, self.metadata)
 
     def _log_progress(self, state):
         logger.info(
@@ -294,6 +339,7 @@ def execute_query(
     query,
     data_source_id,
     metadata,
+    for_export=False,
     user_id=None,
     scheduled_query_id=None,
     is_api_key=False,
@@ -306,7 +352,51 @@ def execute_query(
             is_api_key,
             metadata,
             scheduled_query_id is not None,
+            for_export
         ).run()
     except QueryExecutionError as e:
         models.db.session.rollback()
         return e
+
+def generate_pdf_stream(rows, columns):
+    """Generates a PDF stream from rows and columns."""
+    buffer = streaming_buffer.StreamingBuffer()
+    pdf = canvas.Canvas(buffer)
+
+    for i, row in enumerate(rows):
+        text = ", ".join(str(row[col["name"]]) for col in columns)
+        pdf.drawString(100, 800 - (i * 15), text)
+
+        if i % 50 == 0:
+            pdf.showPage()
+        
+            for chunk in buffer.read_chunks():
+                yield chunk
+        
+    pdf.save()
+    # Finalize PDF
+    for chunk in buffer.read_chunks():
+        yield chunk
+
+def upload_pdf_stream(bucket, object_name, pdf_stream):
+    """Uploads the PDF stream to MinIO."""
+    gen_reader = streaming_buffer.GeneratorReader(pdf_stream)
+    minio_client.put_object(
+        bucket_name=bucket,
+        object_name=object_name,
+        data=gen_reader,
+        length=-1,
+        part_size=10 * 1024 * 1024,
+        content_type='application/pdf'
+    )
+    # generate presigned URL
+    url = minio_client.presigned_get_object(
+        bucket,
+        object_name,
+        expires=timedelta(hours=1),
+        response_headers={
+            "response-content-type": "application/pdf",
+            "response-content-disposition": "attachment; filename=result.pdf"
+        }
+    )
+    return url

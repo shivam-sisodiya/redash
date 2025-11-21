@@ -1,14 +1,11 @@
 import { find, has } from "lodash";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import moment from "moment";
 import { markdown } from "markdown";
 
 import Button from "antd/lib/button";
-import Dropdown from "antd/lib/dropdown";
 import Menu from "antd/lib/menu";
-import Tooltip from "@/components/Tooltip";
-import Link from "@/components/Link";
 import routeWithApiKeySession from "@/components/ApplicationArea/routeWithApiKeySession";
 import Parameters from "@/components/Parameters";
 import { Moment } from "@/components/proptypes";
@@ -18,8 +15,7 @@ import QueryResultsLink from "@/components/EditVisualizationButton/QueryResultsL
 import VisualizationName from "@/components/visualizations/VisualizationName";
 import VisualizationRenderer from "@/components/visualizations/VisualizationRenderer";
 
-import FileOutlinedIcon from "@ant-design/icons/FileOutlined";
-import FileExcelOutlinedIcon from "@ant-design/icons/FileExcelOutlined";
+import FilePdfOutlinedIcon from "@ant-design/icons/FilePdfOutlined";
 
 import { VisualizationType } from "@redash/viz/lib";
 import HtmlContent from "@redash/viz/lib/components/HtmlContent";
@@ -29,8 +25,7 @@ import useImmutableCallback from "@/lib/hooks/useImmutableCallback";
 import { Query } from "@/services/query";
 import location from "@/services/location";
 import routes from "@/services/routes";
-
-import logoUrl from "@/assets/images/redash_icon_small.png";
+import Link from "@/components/Link";
 
 function VisualizationEmbedHeader({ queryName, queryDescription, visualization }) {
   return (
@@ -63,53 +58,24 @@ function VisualizationEmbedFooter({
   queryUrl,
   hideTimestamp,
   apiKey,
+  forExport,
+  handleExportClick,
 }) {
+  // eslint-disable-next-line no-unused-vars
   const downloadMenu = (
     <Menu>
-      <Menu.Item>
-        <QueryResultsLink
-          fileType="csv"
-          query={query}
-          queryResult={queryResults}
-          apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
-          embed>
-          <FileOutlinedIcon /> Download as CSV File
-        </QueryResultsLink>
-      </Menu.Item>
-      <Menu.Item>
-        <QueryResultsLink
-          fileType="tsv"
-          query={query}
-          queryResult={queryResults}
-          apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
-          embed>
-          <FileOutlinedIcon /> Download as TSV File
-        </QueryResultsLink>
-      </Menu.Item>
-      <Menu.Item>
-        <QueryResultsLink
-          fileType="xlsx"
-          query={query}
-          queryResult={queryResults}
-          apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
-          embed>
-          <FileExcelOutlinedIcon /> Download as Excel File
-        </QueryResultsLink>
-      </Menu.Item>
-      <Menu.Item>
+      { queryResults && queryResults.getBucketUrl() && (<Menu.Item>
         <QueryResultsLink
           fileType="pdf"
           query={query}
           queryResult={queryResults}
           apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
+          disabled={!queryResults || !queryResults.getBucketUrl()}
           embed>
-          <FileExcelOutlinedIcon /> Download as Pdf File
+          <FilePdfOutlinedIcon /> Download as Pdf File
         </QueryResultsLink>
-      </Menu.Item>
+      </Menu.Item>)
+      }
     </Menu>
   );
 
@@ -128,20 +94,29 @@ function VisualizationEmbedFooter({
       )}
       {queryUrl && (
         <span className="hidden-print">
-          <Tooltip title="Open in Redash">
-            <Link.Button className="icon-button" href={queryUrl} target="_blank">
-              <i className="fa fa-external-link" aria-hidden="true" />
-              <span className="sr-only">Open in Redash</span>
-            </Link.Button>
-          </Tooltip>
-          {!query.hasParameters() && (
-            <Dropdown overlay={downloadMenu} disabled={!queryResults} trigger={["click"]} placement="topLeft">
-              <Button loading={!queryResults && !!refreshStartedAt} className="m-l-5">
+          {
+            queryResults && !queryResults.getBucketUrl() ? (
+              <Button
+                className="m-l-5"
+                loading={forExport && !queryResults}
+                onClick={() => handleExportClick()}
+              >
                 Download Dataset
                 <i className="fa fa-caret-up m-l-5" aria-hidden="true" />
               </Button>
-            </Dropdown>
-          )}
+            ) : (
+              <Link
+                className="m-l-5"
+                target="_blank"
+                rel="noopener noreferrer"
+                href={queryResults ? queryResults.getBucketUrl() : "#"}
+                style={{ pointerEvents: "auto", zIndex: 10, position: "relative" }}
+                download
+              >
+                <FilePdfOutlinedIcon /> Download as Pdf File
+              </Link>
+            )
+          }
         </span>
       )}
     </div>
@@ -173,15 +148,17 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
   const [refreshStartedAt, setRefreshStartedAt] = useState(null);
   const [queryResults, setQueryResults] = useState(null);
 
+  // Store forExport in a ref so useCallback does NOT depend on it
+  const forExportRef = useRef(true);
+
   const handleError = useImmutableCallback(onError);
 
   useEffect(() => {
     let isCancelled = false;
+
     Query.get({ id: queryId })
       .then(result => {
-        if (!isCancelled) {
-          setQuery(result);
-        }
+        if (!isCancelled) setQuery(result);
       })
       .catch(handleError);
 
@@ -190,14 +167,17 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
     };
   }, [queryId, handleError]);
 
+  // FIXED: does NOT depend on forExport, uses ref instead
   const refreshQueryResults = useCallback(() => {
     if (query) {
       setError(null);
       setRefreshStartedAt(moment());
+
       query
-        .getQueryResultPromise()
+        .getQueryResultPromise(forExportRef.current ? 0 : -1, forExportRef.current)
         .then(result => {
           setQueryResults(result);
+          forExportRef.current = false;   // Reset after export
         })
         .catch(err => {
           setError(err.getError());
@@ -207,28 +187,29 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
   }, [query]);
 
   useEffect(() => {
-    document.querySelector("body").classList.add("headless");
+    document.body.classList.add("headless");
     refreshQueryResults();
   }, [refreshQueryResults]);
 
-  if (!query) {
-    return null;
-  }
+  if (!query) return null;
+
+  // Export button triggers export and refetch
+  const handleExportClick = () => {
+    forExportRef.current = true;
+    refreshQueryResults();
+  };
 
   const hideHeader = has(location.search, "hide_header");
   const hideParametersUI = has(location.search, "hide_parameters");
   const hideQueryLink = has(location.search, "hide_link");
   const hideTimestamp = has(location.search, "hide_timestamp");
-
   const showQueryDescription = has(location.search, "showDescription");
+
   visualizationId = parseInt(visualizationId, 10);
   const visualization = find(query.visualizations, vis => vis.id === visualizationId);
 
   if (!visualization) {
-    // call error handler async, otherwise it will destroy the component on render phase
-    setTimeout(() => {
-      onError(new Error("Visualization does not exist"));
-    }, 10);
+    setTimeout(() => onError(new Error("Visualization does not exist")), 10);
     return null;
   }
 
@@ -241,25 +222,36 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
           visualization={visualization}
         />
       )}
+
       <div className="col-md-12 query__vis">
         {!hideParametersUI && query.hasParameters() && (
           <div className="p-t-15 p-b-10">
-            <Parameters parameters={query.getParametersDefs()} onValuesChange={refreshQueryResults} />
+            <Parameters
+              parameters={query.getParametersDefs()}
+              onValuesChange={refreshQueryResults}
+            />
           </div>
         )}
-        {error && <div className="alert alert-danger" data-test="ErrorMessage">{`Error: ${error}`}</div>}
+
+        {error && <div className="alert alert-danger">{`Error: ${error}`}</div>}
+
         {!error && queryResults && (
-          <VisualizationRenderer visualization={visualization} queryResult={queryResults} context="widget" />
+          <VisualizationRenderer
+            visualization={visualization}
+            queryResult={queryResults}
+            context="widget"
+          />
         )}
+
         {!queryResults && refreshStartedAt && (
           <div className="d-flex justify-content-center">
             <div className="spinner">
-              <i className="zmdi zmdi-refresh zmdi-hc-spin zmdi-hc-5x" aria-hidden="true" />
-              <span className="sr-only">Refreshing...</span>
+              <i className="zmdi zmdi-refresh zmdi-hc-spin zmdi-hc-5x" />
             </div>
           </div>
         )}
       </div>
+
       <VisualizationEmbedFooter
         query={query}
         queryResults={queryResults}
@@ -268,10 +260,13 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
         queryUrl={!hideQueryLink ? query.getUrl() : null}
         hideTimestamp={hideTimestamp}
         apiKey={apiKey}
+        forExport={forExportRef.current}
+        handleExportClick={handleExportClick}
       />
     </div>
   );
 }
+
 
 VisualizationEmbed.propTypes = {
   queryId: PropTypes.string.isRequired,

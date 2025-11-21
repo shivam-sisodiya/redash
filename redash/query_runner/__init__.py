@@ -211,6 +211,9 @@ class BaseQueryRunner:
 
     def run_query(self, query, user):
         raise NotImplementedError()
+    
+    def stream(self, query, chunk_size=5000):
+        raise NotImplementedError()
 
     def fetch_columns(self, columns):
         column_names = set()
@@ -328,6 +331,14 @@ class BaseSQLQueryRunner(BaseQueryRunner):
             if self.query_is_select_no_limit(last_query):
                 queries[-1] = self.add_limit_to_query(last_query)
         return combine_sql_statements(queries)
+    
+    def remove_limit_from_query(self, query):
+        parsed_query = sqlparse.parse(query)[0]
+        last_keyword_idx = find_last_keyword_idx(parsed_query)
+        if last_keyword_idx != -1 and parsed_query.tokens[last_keyword_idx].value.upper() in self.limit_keywords:
+            # Remove limit tokens
+            parsed_query.tokens = parsed_query.tokens[:last_keyword_idx]
+        return str(parsed_query)
 
 
 class BaseHTTPQueryRunner(BaseQueryRunner):

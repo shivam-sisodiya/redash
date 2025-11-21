@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import logging
 import os
 import select
@@ -290,6 +291,52 @@ class PostgreSQL(BaseSQLQueryRunner):
 
         return data, error
 
+    @contextmanager
+    def stream(self, query, chunk_size=5000):
+        """Streams results of a query in chunks."""
+        connection = self._get_connection()
+        _wait(connection, timeout=10)
+
+        cursor = connection.cursor()
+        try:
+            cursor.execute(query)
+            _wait(connection)
+
+            columns = []
+            if cursor.description is not None:
+                columns = self.fetch_columns([(i[0], types_map.get(i[1], None)) for i in cursor.description])
+
+            def row_generator():
+                try:
+                    while True:
+                        rows = cursor.fetchmany(chunk_size)
+                        if not rows:
+                            break
+
+                        for row in rows:
+                            yield dict(zip((c["name"] for c in columns), row))
+
+                except Exception as exc:
+                    raise
+
+                finally:
+                    try:
+                        cursor.close()
+                    except Exception:
+                        pass
+
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+
+                    _cleanup_ssl_certs(self.ssl_config) 
+
+            yield columns, row_generator()
+
+        except Exception as exc:
+            # Propagate exception to caller
+            raise
 
 class Redshift(PostgreSQL):
     @classmethod

@@ -5,16 +5,10 @@ import Link from "@/components/Link";
 export default function QueryResultsLink(props) {
   let href = "";
 
-  const { query, queryResult, fileType } = props;
-  const resultId = queryResult.getId && queryResult.getId();
-  const resultData = queryResult.getData && queryResult.getData();
+  const { queryResult } = props;
 
-  if (resultId && resultData && query.name) {
-    if (query.id) {
-      href = `api/queries/${query.id}/results/${resultId}.${fileType}${props.embed ? `?api_key=${props.apiKey}` : ""}`;
-    } else {
-      href = `api/query_results/${resultId}.${fileType}`;
-    }
+  if (queryResult) {
+      href = queryResult.getBucketUrl();
   }
 
   return (

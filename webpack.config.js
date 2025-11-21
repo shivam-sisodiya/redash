@@ -34,7 +34,7 @@ const isDevelopment = !isProduction;
 const isHotReloadingEnabled =
   isDevelopment && process.env.HOT_RELOAD === "true";
 
-const redashBackend = process.env.REDASH_BACKEND || "http://localhost:5000";
+const redashBackend = process.env.REDASH_BACKEND || "http://127.0.0.1:5000";
 const baseHref = CONFIG.baseHref || "/";
 const staticPath = CONFIG.staticPath || "/static/";
 const htmlTitle = CONFIG.title || "Redash";
@@ -285,7 +285,7 @@ const config = {
           "/oauth"
         ],
         target: redashBackend + "/",
-        changeOrigin: false,
+        changeOrigin: true,
         secure: false
       },
       {
