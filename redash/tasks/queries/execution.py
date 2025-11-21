@@ -310,7 +310,7 @@ class QueryExecutor:
         # For exports, we remove any limit clause from the query
         if self.for_export:
             self.metadata["For Export"] = True
-            # query = query_runner.remove_limit_from_query(query)
+            query = query_runner.remove_limit_from_query(query)
 
         return query_runner.annotate_query(query, self.metadata)
 
