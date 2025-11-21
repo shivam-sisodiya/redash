@@ -149,7 +149,7 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
   const [queryResults, setQueryResults] = useState(null);
 
   // Store forExport in a ref so useCallback does NOT depend on it
-  const forExportRef = useRef(true);
+  const forExportRef = useRef(false);
 
   const handleError = useImmutableCallback(onError);
 
