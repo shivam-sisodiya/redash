@@ -1,5 +1,3 @@
-from advocate.exceptions import UnacceptableAddressException  # noqa: F401
-
 from redash import settings
 
 if settings.ENFORCE_PRIVATE_ADDRESS_BLOCK:
@@ -7,6 +5,8 @@ if settings.ENFORCE_PRIVATE_ADDRESS_BLOCK:
 else:
     import requests as requests_or_advocate
 
+class UnacceptableAddressException(Exception):
+    pass
 
 class ConfiguredSession(requests_or_advocate.Session):
     def request(self, *args, **kwargs):
