@@ -1,10 +1,13 @@
+import time
 import unicodedata
 from urllib.parse import quote
 
 import regex
+import sqlparse
 from flask import make_response, request
 from flask_login import current_user
 from flask_restful import abort
+from rq.job import JobStatus
 
 from redash import models, settings
 from redash.handlers.base import BaseResource, get_object_or_404, record_event
@@ -36,7 +39,35 @@ from redash.utils import (
     json_dumps,
     to_filename,
 )
+import re
+from redash.query_runner import split_sql_statements, combine_sql_statements
 
+# Regex that removes LIMIT/OFFSET only if they appear at the end of the query
+TRAILING_LIMIT_OFFSET = re.compile(
+    r"""
+    (.*?)                                # group 1: the SQL body
+    (                                    # group 2: LIMIT/OFFSET (optional)
+        \s+
+        (LIMIT\s+\d+(\s+OFFSET\s+\d+)?   # LIMIT n or LIMIT n OFFSET n
+        |OFFSET\s+\d+)                   # OR only OFFSET n
+    )
+    \s*;?\s*$                            # optional semicolon + end of query
+    """,
+    re.IGNORECASE | re.DOTALL | re.VERBOSE
+)
+
+def remove_limit_from_query(query_text: str) -> str:
+    statements = split_sql_statements(query_text)
+    cleaned = []
+
+    for stmt in statements:
+        m = TRAILING_LIMIT_OFFSET.match(stmt)
+        if m:
+            cleaned.append(m.group(1).strip())   # remove the LIMIT/OFFSET
+        else:
+            cleaned.append(stmt.strip())         # untouched
+
+    return combine_sql_statements(cleaned)
 
 def error_response(message, http_status=400):
     return {"job": {"status": 4, "error": message}}, http_status
@@ -57,7 +88,7 @@ error_messages = {
 }
 
 
-def run_query(query, parameters, data_source, query_id, should_apply_auto_limit, max_age=0):
+def run_query(query, parameters, data_source, query_id, should_apply_auto_limit, max_age=0, remove_limit=False):
     if not data_source:
         return error_messages["no_data_source"]
 
@@ -75,6 +106,10 @@ def run_query(query, parameters, data_source, query_id, should_apply_auto_limit,
         abort(400, message=str(e))
 
     query_text = data_source.query_runner.apply_auto_limit(query.text, should_apply_auto_limit)
+    
+    # Remove LIMIT clauses for downloads
+    if remove_limit:
+        query_text = remove_limit_from_query(query_text)
 
     if query.missing_params:
         return error_response("Missing parameter value for: {}".format(", ".join(query.missing_params)))
@@ -401,6 +436,140 @@ class QueryResultResource(BaseResource):
     def make_pdf_response(query_result):
         headers = {"Content-Type": "application/pdf"}
         return make_response(serialize_query_result_to_pdf(query_result), 200, headers)
+
+class QueryDownloadResource(BaseResource):
+    @require_any_of_permission(("view_query", "execute_query"))
+    def post(self, query_id, filetype):
+        """
+        Download query results as a file (CSV, TSV, XLSX, PDF).
+        Always executes query fresh from data source (no cache).
+        
+        :param number query_id: The ID of the query to download
+        :param string filetype: File format (csv, tsv, xlsx, pdf)
+        
+        Request body:
+        {
+            "parameters": {
+                "param1": "value1",
+                "param2": "value2"
+            }
+        }
+        
+        Returns: File download
+        """
+        if filetype not in ["csv", "tsv", "xlsx", "pdf"]:
+            abort(400, message="Invalid file type. Supported: csv, tsv, xlsx, pdf")
+        
+        # Get query
+        query = get_object_or_404(models.Query.get_by_id_and_org, query_id, self.current_org)
+        
+        if not query.data_source:
+            abort(400, message="Query does not have a data source configured.")
+        
+        require_access(query.data_source, self.current_user, view_only)
+        
+        # Get parameters from request body
+        params = request.get_json(force=True, silent=True) or {}
+        parameter_values = params.get("parameters", {})
+        
+        # Check permissions
+        allow_executing_with_view_only_permissions = query.parameterized.is_safe
+        # Remove auto_limit for downloads
+        should_apply_auto_limit = False
+        
+        if not has_access(query, self.current_user, allow_executing_with_view_only_permissions):
+            if not query.parameterized.is_safe:
+                if current_user.is_api_user():
+                    abort(403, message="This query contains potentially unsafe parameters and cannot be executed on a shared dashboard or an embedded visualization.")
+                else:
+                    abort(403, message="This query contains potentially unsafe parameters and cannot be executed with read-only access to this data source.")
+            else:
+                abort(403, message="You do not have permission to run queries with this data source.")
+        
+        # Execute query via queue (always fresh, max_age=0, remove_limit=True for downloads)
+        result = run_query(
+            query.parameterized,
+            parameter_values,
+            query.data_source,
+            query_id,
+            should_apply_auto_limit,
+            max_age=0,  # Always execute fresh
+            remove_limit=True,  # Remove LIMIT clauses for downloads
+        )
+        
+        # Check if we got a job (query was enqueued)
+        if "job" in result:
+            job_id = result["job"]["id"]
+            job = Job.fetch(job_id)
+            
+            # Poll job until complete (with timeout)
+            max_wait_time = 300  # 5 minutes max
+            poll_interval = 0.5  # Poll every 500ms
+            start_time = time.time()
+            
+            while True:
+                job.refresh()
+                job_status = job.get_status()
+                
+                # Check timeout
+                if time.time() - start_time > max_wait_time:
+                    abort(408, message="Query execution timed out. Please try again or contact support.")
+                
+                # Check if job is done
+                if job_status == JobStatus.FINISHED:
+                    # Get query_result_id from job result
+                    query_result_id = job.result
+                    if not query_result_id:
+                        abort(500, message="Job completed but no result ID found.")
+                    break
+                elif job_status == JobStatus.FAILED:
+                    error = "Query execution failed."
+                    if isinstance(job.result, Exception):
+                        error = str(job.result)
+                    elif isinstance(job.result, dict) and "error" in job.result:
+                        error = job.result["error"]
+                    abort(500, message=error)
+                elif job.is_cancelled:
+                    abort(400, message="Query execution was cancelled.")
+                
+                # Wait before next poll
+                time.sleep(poll_interval)
+        elif "query_result" in result:
+            # Got cached result (shouldn't happen with max_age=0, but handle it)
+            query_result_id = result["query_result"]["id"]
+        else:
+            abort(500, message="Unexpected response from query execution.")
+        
+        # Load query result from database
+        query_result = get_object_or_404(
+            models.QueryResult.get_by_id_and_org,
+            query_result_id,
+            self.current_org,
+        )
+        
+        require_access(query_result.data_source, self.current_user, view_only)
+        
+        # Convert to file format
+        response_builders = {
+            "csv": QueryResultResource.make_csv_response,
+            "tsv": QueryResultResource.make_tsv_response,
+            "xlsx": QueryResultResource.make_excel_response,
+            "pdf": QueryResultResource.make_pdf_response,
+        }
+        
+        response = response_builders[filetype](query_result)
+        
+        # Add CORS headers if needed
+        if len(settings.ACCESS_CONTROL_ALLOW_ORIGIN) > 0:
+            QueryResultResource.add_cors_headers(response.headers)
+        
+        # Set download filename
+        filename = get_download_filename(query_result, query, filetype)
+        filenames = content_disposition_filenames(filename)
+        response.headers.add("Content-Disposition", "attachment", **filenames)
+        
+        return response
+
 
 class JobResource(BaseResource):
     def get(self, job_id, query_id=None):
