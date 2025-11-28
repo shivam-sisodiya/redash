@@ -106,10 +106,10 @@ RUN /etc/poetry/bin/poetry cache clear pypi --all
 COPY pyproject.toml poetry.lock ./
 
 ARG POETRY_OPTIONS="--no-root --no-interaction --no-ansi"
-# for LDAP authentication, install with `ldap3` group
+# for LDAP authentication, install with `ldap3` extra
 # disabled by default due to GPL license conflict
-ARG install_groups="main,all_ds,dev"
-RUN /etc/poetry/bin/poetry install --only $install_groups $POETRY_OPTIONS
+# Using --extras for PEP 621 optional-dependencies (all_ds and dev)
+RUN /etc/poetry/bin/poetry install --extras all_ds --extras dev $POETRY_OPTIONS
 
 COPY --chown=redash . /app
 COPY --from=frontend-builder --chown=redash /frontend/client/dist /app/client/dist

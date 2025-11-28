@@ -38,19 +38,26 @@ services:
     <<: *redash-service
     command: dev_scheduler
     depends_on:
-      - server
+      - postgres
+      - redis
     environment:
       <<: *redash-environment
   worker:
     <<: *redash-service
     command: dev_worker
     depends_on:
-      - server
+      # - server
+      - postgres
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       <<: *redash-environment
       PYTHONUNBUFFERED: 0
   redis:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
     restart: unless-stopped
   postgres:
     image: postgres:18-alpine

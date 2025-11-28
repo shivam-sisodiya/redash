@@ -34,7 +34,7 @@ const isDevelopment = !isProduction;
 const isHotReloadingEnabled =
   isDevelopment && process.env.HOT_RELOAD === "true";
 
-const redashBackend = process.env.REDASH_BACKEND || "http://localhost:5000";
+const redashBackend = process.env.REDASH_BACKEND || "http://localhost:5001";
 const baseHref = CONFIG.baseHref || "/";
 const staticPath = CONFIG.staticPath || "/static/";
 const htmlTitle = CONFIG.title || "Redash";
@@ -272,6 +272,19 @@ const config = {
     historyApiFallback: {
       index: "/static/index.html",
       rewrites: [{ from: /./, to: "/static/index.html" }]
+    },
+    client: {
+      overlay: {
+        errors: true,
+        warnings: false,
+        runtimeErrors: (error) => {
+          // Ignore ResizeObserver errors - they're harmless
+          if (error.message && error.message.includes("ResizeObserver")) {
+            return false;
+          }
+          return true;
+        }
+      }
     },
     proxy: [
       {
