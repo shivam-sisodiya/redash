@@ -29,8 +29,9 @@ import useImmutableCallback from "@/lib/hooks/useImmutableCallback";
 import { Query } from "@/services/query";
 import location from "@/services/location";
 import routes from "@/services/routes";
+import axiosLib from "axios";
 
-import logoUrl from "@/assets/images/redash_icon_small.png";
+// import logoUrl from "@/assets/images/redash_icon_small.png";
 
 function VisualizationEmbedHeader({ queryName, queryDescription, visualization }) {
   return (
@@ -64,42 +65,81 @@ function VisualizationEmbedFooter({
   hideTimestamp,
   apiKey,
 }) {
+
+  // Download handler that uses new async endpoint
+  const handleDownload = async (fileType) => {
+    try {
+      // Get current parameter values
+      const parameters = query.getParameters ? query.getParameters().getExecutionValues() : {};
+      
+      // Build URL with API key if needed
+      let url = `api/queries/${query.id}/download.${fileType}`;
+      if (apiKey) {
+        url += `?api_key=${apiKey}`;
+      }
+      
+      // Use axiosLib directly to bypass interceptor that converts to response.data
+      const response = await axiosLib.post(url, { parameters }, {
+        responseType: 'blob',
+        xsrfCookieName: 'csrf_token',
+        xsrfHeaderName: 'X-CSRF-TOKEN',
+      });
+      
+      // Create blob and trigger download
+      const blob = new Blob([response.data], { 
+        type: response.headers['content-type'] || 
+              (fileType === 'pdf' ? 'application/pdf' : 
+               fileType === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' :
+               'text/csv')
+      });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      const contentDisposition = response.headers['content-disposition'];
+      const filename = contentDisposition 
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') || contentDisposition.split("filename*=")[1]?.split("''")[1]
+        : `${query.name || `query_${query.id}`}.${fileType}`;
+      link.download = decodeURIComponent(filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Download failed:', error);
+      let errorMessage = 'Unknown error';
+      if (error.response) {
+        // Try to read error message from blob response
+        if (error.response.data instanceof Blob) {
+          error.response.data.text().then(text => {
+            try {
+              const json = JSON.parse(text);
+              alert(`Download failed: ${json.message || errorMessage}`);
+            } catch {
+              alert(`Download failed: ${errorMessage}`);
+            }
+          });
+          return;
+        }
+        errorMessage = error.response.data?.message || error.message || errorMessage;
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
+      alert(`Download failed: ${errorMessage}`);
+    }
+  };
+
   const downloadMenu = (
     <Menu>
-      <Menu.Item>
-        <QueryResultsLink
-          fileType="csv"
-          query={query}
-          queryResult={queryResults}
-          apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
-          embed>
-          <FileOutlinedIcon /> Download as CSV File
-        </QueryResultsLink>
+      <Menu.Item onClick={() => handleDownload('csv')}>
+        <FileOutlinedIcon /> Download as CSV File
       </Menu.Item>
-      <Menu.Item>
-        <QueryResultsLink
-          fileType="tsv"
-          query={query}
-          queryResult={queryResults}
-          apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
-          embed>
-          <FileOutlinedIcon /> Download as TSV File
-        </QueryResultsLink>
+      <Menu.Item onClick={() => handleDownload('tsv')}>
+        <FileOutlinedIcon /> Download as TSV File
       </Menu.Item>
-      <Menu.Item>
-        <QueryResultsLink
-          fileType="xlsx"
-          query={query}
-          queryResult={queryResults}
-          apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
-          embed>
-          <FileExcelOutlinedIcon /> Download as Excel File
-        </QueryResultsLink>
+      <Menu.Item onClick={() => handleDownload('xlsx')}>
+        <FileExcelOutlinedIcon /> Download as Excel File
       </Menu.Item>
-      <Menu.Item>
+      {/* <Menu.Item>
         <QueryResultsLink
           fileType="pdf"
           query={query}
@@ -108,7 +148,9 @@ function VisualizationEmbedFooter({
           disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
           embed>
           <FileExcelOutlinedIcon /> Download as Pdf File
-        </QueryResultsLink>
+        </QueryResultsLink> */}
+      <Menu.Item onClick={() => handleDownload('pdf')}>
+        <FileExcelOutlinedIcon /> Download as Pdf File
       </Menu.Item>
     </Menu>
   );
@@ -134,14 +176,15 @@ function VisualizationEmbedFooter({
               <span className="sr-only">Open in Redash</span>
             </Link.Button>
           </Tooltip>
-          {!query.hasParameters() && (
+          {/* {!query.hasParameters() && ( */}
             <Dropdown overlay={downloadMenu} disabled={!queryResults} trigger={["click"]} placement="topLeft">
               <Button loading={!queryResults && !!refreshStartedAt} className="m-l-5">
                 Download Dataset
                 <i className="fa fa-caret-up m-l-5" aria-hidden="true" />
               </Button>
             </Dropdown>
-          )}
+          {/* ) */}
+          {/* } */}
         </span>
       )}
     </div>

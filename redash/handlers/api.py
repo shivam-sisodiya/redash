@@ -71,6 +71,7 @@ from redash.handlers.queries import (
 )
 from redash.handlers.query_results import (
     JobResource,
+    QueryDownloadResource,
     QueryDropdownsResource,
     QueryResultDropdownResource,
     QueryResultListResource,
@@ -244,6 +245,11 @@ api.add_org_resource(
     "/api/queries/<query_id>/results.<filetype>",
     "/api/queries/<query_id>/results/<query_result_id>.<filetype>",
     endpoint="query_result",
+)
+api.add_org_resource(
+    QueryDownloadResource,
+    "/api/queries/<query_id>/download.<filetype>",
+    endpoint="query_download",
 )
 api.add_org_resource(
     JobResource,
