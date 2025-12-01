@@ -125,201 +125,178 @@ def serialize_query_result_to_xlsx(query_result):
 
 def serialize_query_result_to_pdf(query_result):
     query_data = query_result.data
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=10)
-    
-    # Limit to first 5 columns only
-    all_columns = query_data["columns"] or []
-    columns = all_columns[:5]
-    column_names = [col["name"] for col in columns]
-    
+    rows = query_data.get("rows") or []
+    columns_meta = query_data.get("columns") or []
+    column_names = [c["name"] for c in columns_meta[:20]]
+
     if not column_names:
-        # No columns, return empty PDF
-        pdf_bytes = pdf.output(dest="S").encode("latin1")
-        return pdf_bytes
-    
-    # Calculate column widths based on content
-    # PDF page width is 210mm (A4), leave 20mm for margins (10mm each side)
-    available_width = 190  # mm
-    margin = 10  # mm
-    
-    # Calculate max width needed for each column
-    # Check header names and sample data values
-    column_widths = []
-    sample_rows = query_data["rows"][:20]  # Check first 20 rows for width calculation
-    
-    for col_name in column_names:
-        max_chars = len(str(col_name))  # Start with header length
-        
-        # Check data values in this column
-        for row in sample_rows:
-            v = row.get(col_name)
-            if isinstance(v, (dict, list)):
-                v = str(v)
-            cell_text = str(v) if v is not None else ""
-            max_chars = max(max_chars, len(cell_text))
-        
-        # Convert character count to mm (roughly 0.5mm per character for Arial size 9-10)
-        # Add padding (4mm per column for borders and spacing)
-        estimated_width = max_chars * 0.5 + 4
-        column_widths.append(max(estimated_width, 25))  # Minimum 25mm per column
-    
-    # Normalize widths to fit available space
-    total_width = sum(column_widths)
-    if total_width > available_width:
-        # Scale down proportionally
-        scale_factor = available_width / total_width
-        column_widths = [w * scale_factor for w in column_widths]
-    else:
-        # Distribute extra space evenly
-        extra_space = available_width - total_width
-        extra_per_column = extra_space / len(column_widths)
-        column_widths = [w + extra_per_column for w in column_widths]
-    
-    # Ensure total width doesn't exceed available width (safety check)
-    total_width = sum(column_widths)
-    if total_width > available_width:
-        # Final normalization to ensure exact fit
-        scale_factor = available_width / total_width
-        column_widths = [w * scale_factor for w in column_widths]
-    
-    # Set margins
-    pdf.set_left_margin(margin)
-    pdf.set_right_margin(margin)
-    x_start = margin
-    y_start = 10
-    
-    # Header row with background
-    pdf.set_fill_color(220, 220, 220)  # Light gray background
-    pdf.set_font("Arial", "B", 9)  # Bold for header, slightly smaller
-    pdf.set_xy(x_start, y_start)
-    
-    for i, name in enumerate(column_names):
-        # Use FPDF's get_string_width to accurately truncate header
-        display_name = str(name)
-        cell_width_mm = column_widths[i]
-        max_text_width = cell_width_mm - 1  # Leave 1mm margin
-        
-        text_width = pdf.get_string_width(display_name)
-        if text_width > max_text_width:
-            # Truncate header to fit
-            low = 0
-            high = len(display_name)
-            best_length = 0
-            
-            while low <= high:
-                mid = (low + high) // 2
-                test_text = display_name[:mid] + "..."
-                test_width = pdf.get_string_width(test_text)
-                
-                if test_width <= max_text_width:
-                    best_length = mid
-                    low = mid + 1
+        pdf = FPDF("L")
+        return pdf.output(dest="S").encode("latin1")
+
+    # ------------------ CONFIG --------------------
+    PAGE_W, PAGE_H = 297, 210          # A4 landscape
+    LEFT, RIGHT = 5, 5
+    TOP, BOTTOM = 10, 10
+    AVAILABLE_W = PAGE_W - LEFT - RIGHT
+
+    MAX_LINES = 3                    # max lines per cell
+    LINE_HEIGHT = 5                    # mm per line
+    MAX_ROW_HEIGHT = MAX_LINES * LINE_HEIGHT  # 20mm
+
+    MIN_COL_W = 25
+    CHAR_MM = 0.5
+    PAD = 1
+
+    HEADER_FONT = ("Arial", "B", 8)
+    DATA_FONT = ("Arial", "", 8)
+
+    # ------------- BUILD PDF ----------------------
+    pdf = FPDF("L")
+    pdf.add_page()
+    pdf.set_left_margin(LEFT)
+    pdf.set_right_margin(RIGHT)
+    pdf.set_y(TOP)
+    pdf.set_auto_page_break(auto=False)
+
+    # ------------- HELPERS -------------------------
+
+    def wrap_to_lines(text, width_mm, font):
+        """Wrap text into up to MAX_LINES lines, no padding; last line may get ellipsis."""
+        pdf.set_font(*font)
+        text = "" if text is None else str(text).replace("\n", " ")
+
+        width_limit = width_mm - 3.5  # padding from borders
+        lines = []
+        remaining = text
+
+        def fit_line(s):
+            lo, hi = 0, len(s)
+            best = 0
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                part = s[:mid]
+                if pdf.get_string_width(part) <= width_limit:
+                    best = mid
+                    lo = mid + 1
                 else:
-                    high = mid - 1
-            
-            if best_length > 0:
-                display_name = display_name[:best_length] + "..."
-            else:
-                display_name = "..."  # Column too narrow
-        
-        pdf.cell(column_widths[i], 7, display_name, border=1, fill=True, align="L")
-    
-    pdf.ln()
-    y_pos = pdf.get_y()
-    
-    # Data rows
-    pdf.set_font("Arial", size=8)  # Smaller font for data to fit more
-    pdf.set_fill_color(255, 255, 255)  # White background
-    
-    row_height = 6  # Height per row
-    
-    for row_idx, row in enumerate(query_data["rows"]):
-        # Check if we need a new page (leave space for header + 2 rows)
-        if pdf.get_y() + row_height * 2 > 287:  # A4 height is 297mm, leave 10mm margin
+                    hi = mid - 1
+            return s[:best]
+
+        for i in range(MAX_LINES):
+            if not remaining:
+                break
+
+            # Last allowed line → add ellipsis if truncated
+            if i == MAX_LINES - 1:
+                lo, hi = 0, len(remaining)
+                best = 0
+                while lo <= hi:
+                    mid = (lo + hi) // 2
+                    part = remaining[:mid] + "..."
+                    if pdf.get_string_width(part) <= width_limit:
+                        best = mid
+                        lo = mid + 1
+                    else:
+                        hi = mid - 1
+
+                if best == 0:
+                    lines.append("...")
+                else:
+                    sub = remaining[:best]
+                    if best < len(remaining):
+                        sub += "..."
+                    lines.append(sub)
+                break
+
+            # Normal line
+            chunk = fit_line(remaining)
+            if not chunk:
+                lines.append("...")
+                break
+
+            lines.append(chunk)
+            remaining = remaining[len(chunk):]
+
+        return lines
+
+    def compute_widths():
+        widths = []
+        sample = rows[:10]
+
+        for name in column_names:
+            max_chars = max(
+                [len(name)] +
+                [len(str(r.get(name, ""))) for r in sample]
+            )
+            est = max(max_chars * CHAR_MM + PAD, MIN_COL_W)
+            widths.append(est)
+
+        total = sum(widths)
+
+        if total > AVAILABLE_W:
+            scale = AVAILABLE_W / total
+            return [w * scale for w in widths]
+
+        extra = AVAILABLE_W - total
+        add = extra / len(widths)
+        return [w + add for w in widths]
+
+    def draw_row(text_values, widths, font, fill=False):
+        """Draw one row with dynamic height based on wrapped content."""
+        y_start = pdf.get_y()
+        pdf.set_font(*font)
+
+        # Wrap all cells first
+        wrapped_cells = [wrap_to_lines(txt, w, font) for txt, w in zip(text_values, widths)]
+
+        # Determine how many lines this row needs (min 1), cap at MAX_LINES
+        line_counts = [max(1, min(len(lines), MAX_LINES)) for lines in wrapped_cells]
+        max_lines_in_row = max(line_counts) if line_counts else 1
+        row_height = min(max_lines_in_row * LINE_HEIGHT, MAX_ROW_HEIGHT)
+
+        # Page break check WITH this dynamic row height
+        if y_start + row_height + BOTTOM > PAGE_H:
             pdf.add_page()
-            pdf.set_xy(x_start, y_start)
-            # Redraw header on new page
-            pdf.set_fill_color(220, 220, 220)
-            pdf.set_font("Arial", "B", 9)
-            for i, name in enumerate(column_names):
-                # Use FPDF's get_string_width to accurately truncate header
-                display_name = str(name)
-                cell_width_mm = column_widths[i]
-                max_text_width = cell_width_mm - 1  # Leave 1mm margin
-                
-                text_width = pdf.get_string_width(display_name)
-                if text_width > max_text_width:
-                    # Truncate header to fit
-                    low = 0
-                    high = len(display_name)
-                    best_length = 0
-                    
-                    while low <= high:
-                        mid = (low + high) // 2
-                        test_text = display_name[:mid] + "..."
-                        test_width = pdf.get_string_width(test_text)
-                        
-                        if test_width <= max_text_width:
-                            best_length = mid
-                            low = mid + 1
-                        else:
-                            high = mid - 1
-                    
-                    if best_length > 0:
-                        display_name = display_name[:best_length] + "..."
-                    else:
-                        display_name = "..."  # Column too narrow
-                
-                pdf.cell(column_widths[i], 7, display_name, border=1, fill=True, align="L")
-            pdf.ln()
-            pdf.set_font("Arial", size=8)
-            pdf.set_fill_color(255, 255, 255)
-        
-        pdf.set_x(x_start)
-        
-        for i, name in enumerate(column_names):
-            v = row.get(name)
-            if isinstance(v, (dict, list)):
-                v = str(v)
-            cell_value = str(v) if v is not None else ""
-            
-            # Use FPDF's get_string_width to accurately calculate text width
-            # Truncate text to fit column width (leave 1mm margin)
-            cell_width_mm = column_widths[i]
-            max_text_width = cell_width_mm - 1  # Leave 1mm margin
-            
-            # Binary search to find the right truncation point
-            text_width = pdf.get_string_width(cell_value)
-            if text_width > max_text_width:
-                # Truncate text to fit
-                low = 0
-                high = len(cell_value)
-                best_length = 0
-                
-                # Binary search for the right length
-                while low <= high:
-                    mid = (low + high) // 2
-                    test_text = cell_value[:mid] + "..."
-                    test_width = pdf.get_string_width(test_text)
-                    
-                    if test_width <= max_text_width:
-                        best_length = mid
-                        low = mid + 1
-                    else:
-                        high = mid - 1
-                
-                if best_length > 0:
-                    cell_value = cell_value[:best_length] + "..."
-                else:
-                    cell_value = "..."  # Column too narrow, just show ellipsis
-            
-            # Use cell with proper alignment
-            pdf.cell(column_widths[i], row_height, cell_value, border=1, fill=False, align="L")
-        
-        pdf.ln()
-    
-    # Output as bytes
-    pdf_bytes = pdf.output(dest="S").encode("latin1")  # FPDF returns str
-    return pdf_bytes
+            pdf.set_y(TOP)
+            # redraw header on new page
+            draw_row(column_names, widths, HEADER_FONT, fill=True)
+            y_start = pdf.get_y()
+            pdf.set_font(*font)
+
+            # recompute wrapped because font might have changed, but we can reuse
+            wrapped_cells[:] = [wrap_to_lines(txt, w, font) for txt, w in zip(text_values, widths)]
+            line_counts[:] = [max(1, min(len(lines), MAX_LINES)) for lines in wrapped_cells]
+            max_lines_in_row = max(line_counts) if line_counts else 1
+            row_height = min(max_lines_in_row * LINE_HEIGHT, MAX_ROW_HEIGHT)
+
+        # Draw each cell manually
+        x = LEFT
+        for lines, w in zip(wrapped_cells, widths):
+            pdf.set_xy(x, y_start)
+            pdf.rect(x, y_start, w, row_height)  # border rect
+
+            # Draw lines of text inside the cell
+            TEXT_PADDING = 1.5  # mm
+            for idx, line in enumerate(lines[:MAX_LINES]):
+                y_line = y_start + idx * LINE_HEIGHT
+                if y_line + LINE_HEIGHT > y_start + row_height:
+                    break
+                pdf.set_xy(x + TEXT_PADDING, y_line)
+                pdf.cell(w - 2 * TEXT_PADDING, LINE_HEIGHT, line, border=0)
+
+            x += w
+
+        pdf.set_y(y_start + row_height)
+
+    # compute final column widths
+    col_widths = compute_widths()
+
+    # draw header
+    draw_row(column_names, col_widths, HEADER_FONT, fill=True)
+
+    # draw rows
+    for r in rows:
+        vals = [r.get(c, "") for c in column_names]
+        draw_row(vals, col_widths, DATA_FONT)
+
+    return pdf.output(dest="S").encode("latin1")

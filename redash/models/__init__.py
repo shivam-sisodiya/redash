@@ -338,8 +338,8 @@ class QueryResult(db.Model, BelongsToOrgMixin):
         }
 
     @classmethod
-    def unused(cls, days=7):
-        age_threshold = datetime.datetime.now() - datetime.timedelta(days=days)
+    def unused(cls, minutes=10):
+        age_threshold = datetime.datetime.now() - datetime.timedelta(minutes=minutes)
         return (cls.query.filter(Query.id.is_(None), cls.retrieved_at < age_threshold).outerjoin(Query)).options(
             load_only("id")
         )
