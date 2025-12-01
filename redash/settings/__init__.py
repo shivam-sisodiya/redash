@@ -43,7 +43,7 @@ RQ_REDIS_URL = os.environ.get("RQ_REDIS_URL", _REDIS_URL)
 # The following enables periodic job (every 5 minutes) of removing unused query results.
 QUERY_RESULTS_CLEANUP_ENABLED = parse_boolean(os.environ.get("REDASH_QUERY_RESULTS_CLEANUP_ENABLED", "true"))
 QUERY_RESULTS_CLEANUP_COUNT = int(os.environ.get("REDASH_QUERY_RESULTS_CLEANUP_COUNT", "100"))
-QUERY_RESULTS_CLEANUP_MAX_AGE = int(os.environ.get("REDASH_QUERY_RESULTS_CLEANUP_MAX_AGE", "7"))
+QUERY_RESULTS_CLEANUP_MAX_AGE = int(os.environ.get("REDASH_QUERY_RESULTS_CLEANUP_MAX_AGE", "10"))  # Age in minutes
 
 QUERY_RESULTS_EXPIRED_TTL_ENABLED = parse_boolean(os.environ.get("REDASH_QUERY_RESULTS_EXPIRED_TTL_ENABLED", "false"))
 # default set query results expired ttl 86400 seconds
