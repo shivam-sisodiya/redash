@@ -131,10 +131,12 @@ def serialize_query_result_to_pdf(query_result):
 
     if not column_names:
         pdf = FPDF("L")
+        # pdf = FPDF();
         return pdf.output(dest="S").encode("latin1")
 
     # ------------------ CONFIG --------------------
     PAGE_W, PAGE_H = 297, 210          # A4 landscape
+    # PAGE_W, PAGE_H = 210, 297
     LEFT, RIGHT = 5, 5
     TOP, BOTTOM = 10, 10
     AVAILABLE_W = PAGE_W - LEFT - RIGHT
@@ -152,6 +154,7 @@ def serialize_query_result_to_pdf(query_result):
 
     # ------------- BUILD PDF ----------------------
     pdf = FPDF("L")
+    # pdf = FPDF();
     pdf.add_page()
     pdf.set_left_margin(LEFT)
     pdf.set_right_margin(RIGHT)
