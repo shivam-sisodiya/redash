@@ -122,15 +122,44 @@ class ParameterizedQuery:
         self.query = template
         self.parameters = {}
 
+    # def apply(self, parameters):
+    #     invalid_parameter_names = [key for (key, value) in parameters.items() if not self._valid(key, value)]
+    #     if invalid_parameter_names:
+    #         raise InvalidParameterError(invalid_parameter_names)
+    #     else:
+    #         self.parameters.update(parameters)
+    #         self.query = mustache_render(self.template, join_parameter_list_values(parameters, self.schema))
+
+    #     return self
+
     def apply(self, parameters):
-        invalid_parameter_names = [key for (key, value) in parameters.items() if not self._valid(key, value)]
+        normalized = {}
+
+        for key, value in parameters.items():
+            # If empty → skip validation and skip rendering (Periscope behavior)
+            if value in (None, "", []):
+                parameters[key] = "NULL"
+                continue   # <-- IMPORTANT!!!
+            normalized[key] = value
+
+        # Validate only NON-empty parameters
+        invalid_parameter_names = [
+            key for (key, value) in normalized.items()
+            if not self._valid(key, value)
+        ]
         if invalid_parameter_names:
             raise InvalidParameterError(invalid_parameter_names)
-        else:
-            self.parameters.update(parameters)
-            self.query = mustache_render(self.template, join_parameter_list_values(parameters, self.schema))
 
+        # Render using only the NON-empty parameters
+        self.parameters.update(parameters)
+        self.query = mustache_render(
+            self.template,
+            join_parameter_list_values(parameters, self.schema)
+        )
         return self
+
+
+
 
     def _valid(self, name, value):
         if not self.schema:
@@ -188,8 +217,17 @@ class ParameterizedQuery:
 
     @property
     def missing_params(self):
-        query_parameters = set(_collect_query_parameters(self.template))
-        return set(query_parameters) - set(_parameter_names(self.parameters))
+        """
+        Returns parameters that are missing and required.
+        Parameters are optional by default - Mustache templates can handle missing 
+        parameters by rendering them as empty strings. This allows dropdown filters
+        and other parameters to be optional.
+        """
+        # Make all parameters optional by default
+        # Mustache will render missing parameters as empty strings
+        # query_parameters = set(_collect_query_parameters(self.template))
+        # return set(query_parameters) - set(_parameter_names(self.parameters))
+        return set()
 
     @property
     def text(self):
