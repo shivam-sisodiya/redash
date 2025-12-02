@@ -7,6 +7,7 @@ import InputNumber from "antd/lib/input-number";
 import DateParameter from "@/components/dynamic-parameters/DateParameter";
 import DateRangeParameter from "@/components/dynamic-parameters/DateRangeParameter";
 import QueryBasedParameterInput from "./QueryBasedParameterInput";
+import ExternalApiParameterInput from "./ExternalApiParameterInput";
 
 import "./ParameterValueInput.less";
 import Tooltip from "./Tooltip";
@@ -178,6 +179,25 @@ class ParameterValueInput extends React.Component {
     );
   }
 
+  renderExternalApiInput() {
+    const { parameter, allParameters } = this.props;
+    const { value } = this.state;
+    // External API parameters always support multiple values
+    const hasMultiValues = parameter.multiValuesOptions !== null && parameter.multiValuesOptions !== undefined;
+    return (
+      <ExternalApiParameterInput
+        className={this.props.className}
+        mode={hasMultiValues ? "multiple" : "default"}
+        parameter={parameter}
+        value={value}
+        onSelect={this.onSelect}
+        allParameters={allParameters || []}
+        style={{ minWidth: 60 }}
+        {...multipleValuesProps}
+      />
+    );
+  }
+
   renderNumberInput() {
     const { className } = this.props;
     const { value } = this.state;
@@ -242,6 +262,8 @@ class ParameterValueInput extends React.Component {
         return this.renderEnumInput();
       case "query":
         return this.renderQueryBasedInput();
+      case "external-api":
+        return this.renderExternalApiInput();
       case "number":
         return this.renderNumberInput();
       case "text-pattern":

@@ -164,6 +164,7 @@ export default class Parameters extends React.Component {
           queryId={param.queryId}
           onSelect={(value, isDirty) => this.setPendingValue(param, value, isDirty)}
           regex={param.regex}
+          allParameters={this.state.parameters}
         />
       </div>
     );
