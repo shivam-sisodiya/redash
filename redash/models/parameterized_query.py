@@ -191,6 +191,7 @@ class ParameterizedQuery:
                 [v["value"] for v in dropdown_values(query_id, self.org)],
                 allow_multiple_values,
             ),
+            "external-api": lambda value: True,  # External API parameters - skip validation (handled by frontend)
             "date": _is_date,
             "datetime-local": _is_date,
             "datetime-with-seconds": _is_date,

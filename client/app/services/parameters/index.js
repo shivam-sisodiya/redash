@@ -3,6 +3,7 @@ import TextParameter from "./TextParameter";
 import NumberParameter from "./NumberParameter";
 import EnumParameter from "./EnumParameter";
 import QueryBasedDropdownParameter from "./QueryBasedDropdownParameter";
+import ExternalApiDropdownParameter from "./ExternalApiDropdownParameter";
 import DateParameter from "./DateParameter";
 import DateRangeParameter from "./DateRangeParameter";
 import TextPatternParameter from "./TextPatternParameter";
@@ -15,6 +16,8 @@ function createParameter(param, parentQueryId) {
       return new EnumParameter(param, parentQueryId);
     case "query":
       return new QueryBasedDropdownParameter(param, parentQueryId);
+    case "external-api":
+      return new ExternalApiDropdownParameter(param, parentQueryId);
     case "date":
     case "datetime-local":
     case "datetime-with-seconds":
@@ -41,6 +44,7 @@ export {
   NumberParameter,
   EnumParameter,
   QueryBasedDropdownParameter,
+  ExternalApiDropdownParameter,
   DateParameter,
   DateRangeParameter,
   createParameter,
