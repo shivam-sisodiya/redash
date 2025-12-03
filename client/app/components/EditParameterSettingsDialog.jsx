@@ -101,6 +101,11 @@ function EditParameterSettingsDialog(props) {
       return false;
     }
 
+    // external-api - no additional validation needed (hardcoded configuration)
+    if (param.type === "external-api") {
+      // No validation needed, everything is hardcoded
+    }
+
     return true;
   }
 
@@ -110,6 +115,15 @@ function EditParameterSettingsDialog(props) {
       // forced to do this cause param won't update in time for save
       param.title = getDefaultTitle(param.name);
       setParam(param);
+    }
+
+    // For external-api type, always enable multiValuesOptions with SQL-friendly quotes
+    if (param.type === "external-api" && !param.multiValuesOptions) {
+      param.multiValuesOptions = {
+        prefix: "'",
+        suffix: "'",
+        separator: ",",
+      };
     }
 
     props.dialog.close(param);
@@ -177,6 +191,7 @@ function EditParameterSettingsDialog(props) {
             </Option>
             <Option value="enum">Dropdown List</Option>
             <Option value="query">Query Based Dropdown List</Option>
+            <Option value="external-api">External API Dropdown</Option>
             <Option disabled key="dv1">
               <Divider className="select-option-divider" />
             </Option>
@@ -229,6 +244,15 @@ function EditParameterSettingsDialog(props) {
             />
           </Form.Item>
         )}
+        {param.type === "external-api" && (
+          <Form.Item
+            label="Info"
+            help="This parameter will use external API to load dropdown values. Supports TG_ZONE, TG_REGION, and TG_DEPOT filters with cascading behavior."
+            {...formItemProps}
+          >
+            <Input disabled value="External API (Auto-configured)" style={{ color: "#999" }} />
+          </Form.Item>
+        )}
         {(param.type === "enum" || param.type === "query") && (
           <Form.Item className="m-b-0" label=" " colon={false} {...formItemProps}>
             <Checkbox
@@ -250,6 +274,34 @@ function EditParameterSettingsDialog(props) {
               Allow multiple values
             </Checkbox>
           </Form.Item>
+        )}
+        {param.type === "external-api" && (
+          <React.Fragment>
+            <Form.Item className="m-b-0" label=" " colon={false} {...formItemProps}>
+              <Checkbox
+                defaultChecked={true}
+                disabled
+                data-test="ExternalApiMultipleValuesCheckbox"
+              >
+                Allow multiple values (always enabled for external API)
+              </Checkbox>
+            </Form.Item>
+            <Form.Item
+              label="SQL Usage"
+              help={
+                <React.Fragment>
+                  Values are formatted as: <code>{`'value1','value2','value3'`}</code>
+                  <br />
+                  <strong>Use IN clause in your query:</strong> <code>{`WHERE zone IN ({{TG_ZONE}})`}</code>
+                  <br />
+                  <strong>NOT:</strong> <code>{`WHERE zone = {{TG_ZONE}}`}</code> (this will cause SQL errors)
+                </React.Fragment>
+              }
+              {...formItemProps}
+            >
+              <Input disabled value="Formatted for SQL IN clause" style={{ color: "#999" }} />
+            </Form.Item>
+          </React.Fragment>
         )}
         {(param.type === "enum" || param.type === "query") && param.multiValuesOptions && (
           <Form.Item

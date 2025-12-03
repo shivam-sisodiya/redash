@@ -76,9 +76,55 @@ export default class QueryBasedParameterInput extends React.Component {
     }
   }
 
+  handleSelectAll = () => {
+    const { options } = this.state;
+    const { mode, onSelect } = this.props;
+    const currentValue = this.state.value || [];
+    
+    if (mode === "multiple") {
+      const allValues = map(options, option => option.value);
+      const isAllSelected = allValues.length > 0 && allValues.every(val => currentValue.includes(val));
+      
+      if (isAllSelected) {
+        // Deselect all
+        onSelect([]);
+      } else {
+        // Select all
+        onSelect(allValues);
+      }
+    }
+  };
+
   render() {
     const { className, mode, onSelect, queryId, value, ...otherProps } = this.props;
     const { loading, options } = this.state;
+    const currentValue = this.state.value || [];
+    const allValues = map(options, option => option.value);
+    const isAllSelected = mode === "multiple" && allValues.length > 0 && allValues.every(val => currentValue.includes(val));
+    
+    const selectOptions = map(options, ({ value, name }) => ({ label: String(name), value }));
+    
+    // Add "Select All" option for multiple mode
+    const dropdownRender = mode === "multiple" && options.length > 0 ? (menu) => (
+      <div>
+        <div
+          style={{
+            padding: "4px 8px",
+            cursor: "pointer",
+            borderBottom: "1px solid #f0f0f0",
+            background: isAllSelected ? "#e6f7ff" : "transparent",
+          }}
+          onClick={this.handleSelectAll}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <span style={{ fontWeight: isAllSelected ? "bold" : "normal" }}>
+            {isAllSelected ? "✓ " : ""}Select All
+          </span>
+        </div>
+        {menu}
+      </div>
+    ) : undefined;
+    
     return (
       <span>
         <SelectWithVirtualScroll
@@ -88,10 +134,11 @@ export default class QueryBasedParameterInput extends React.Component {
           mode={mode}
           value={this.state.value}
           onChange={onSelect}
-          options={map(options, ({ value, name }) => ({ label: String(name), value }))}
+          options={selectOptions}
           showSearch
           showArrow
           notFoundContent={isEmpty(options) ? "No options available" : null}
+          dropdownRender={dropdownRender}
           {...otherProps}
         />
       </span>

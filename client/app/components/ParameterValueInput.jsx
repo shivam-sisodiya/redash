@@ -7,6 +7,7 @@ import InputNumber from "antd/lib/input-number";
 import DateParameter from "@/components/dynamic-parameters/DateParameter";
 import DateRangeParameter from "@/components/dynamic-parameters/DateRangeParameter";
 import QueryBasedParameterInput from "./QueryBasedParameterInput";
+import ExternalApiParameterInput from "./ExternalApiParameterInput";
 
 import "./ParameterValueInput.less";
 import Tooltip from "./Tooltip";
@@ -93,12 +94,57 @@ class ParameterValueInput extends React.Component {
     );
   }
 
+  handleSelectAllEnum = () => {
+    const { enumOptions, parameter } = this.props;
+    const { value } = this.state;
+    const enumOptionsArray = enumOptions.split("\n").filter((v) => v !== "");
+    const normalize = (val) => (parameter.multiValuesOptions && val === null ? [] : val);
+    const currentValue = normalize(value) || [];
+    
+    if (parameter.multiValuesOptions) {
+      const isAllSelected = enumOptionsArray.length > 0 && enumOptionsArray.every(opt => currentValue.includes(opt));
+      
+      if (isAllSelected) {
+        // Deselect all
+        this.onSelect([]);
+      } else {
+        // Select all
+        this.onSelect(enumOptionsArray);
+      }
+    }
+  };
+
   renderEnumInput() {
     const { enumOptions, parameter } = this.props;
     const { value } = this.state;
     const enumOptionsArray = enumOptions.split("\n").filter((v) => v !== "");
     // Antd Select doesn't handle null in multiple mode
     const normalize = (val) => (parameter.multiValuesOptions && val === null ? [] : val);
+    const currentValue = normalize(value) || [];
+    const isAllSelected = parameter.multiValuesOptions && enumOptionsArray.length > 0 && enumOptionsArray.every(opt => currentValue.includes(opt));
+
+    const selectOptions = map(enumOptionsArray, (opt) => ({ label: String(opt), value: opt }));
+    
+    // Add "Select All" option for multiple mode
+    const dropdownRender = parameter.multiValuesOptions && enumOptionsArray.length > 0 ? (menu) => (
+      <div>
+        <div
+          style={{
+            padding: "4px 8px",
+            cursor: "pointer",
+            borderBottom: "1px solid #f0f0f0",
+            background: isAllSelected ? "#e6f7ff" : "transparent",
+          }}
+          onClick={this.handleSelectAllEnum}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <span style={{ fontWeight: isAllSelected ? "bold" : "normal" }}>
+            {isAllSelected ? "✓ " : ""}Select All
+          </span>
+        </div>
+        {menu}
+      </div>
+    ) : undefined;
 
     return (
       <SelectWithVirtualScroll
@@ -106,10 +152,11 @@ class ParameterValueInput extends React.Component {
         mode={parameter.multiValuesOptions ? "multiple" : "default"}
         value={normalize(value)}
         onChange={this.onSelect}
-        options={map(enumOptionsArray, (opt) => ({ label: String(opt), value: opt }))}
+        options={selectOptions}
         showSearch
         showArrow
         notFoundContent={isEmpty(enumOptionsArray) ? "No options available" : null}
+        dropdownRender={dropdownRender}
         {...multipleValuesProps}
       />
     );
@@ -126,6 +173,25 @@ class ParameterValueInput extends React.Component {
         value={value}
         queryId={queryId}
         onSelect={this.onSelect}
+        style={{ minWidth: 60 }}
+        {...multipleValuesProps}
+      />
+    );
+  }
+
+  renderExternalApiInput() {
+    const { parameter, allParameters } = this.props;
+    const { value } = this.state;
+    // External API parameters always support multiple values
+    const hasMultiValues = parameter.multiValuesOptions !== null && parameter.multiValuesOptions !== undefined;
+    return (
+      <ExternalApiParameterInput
+        className={this.props.className}
+        mode={hasMultiValues ? "multiple" : "default"}
+        parameter={parameter}
+        value={value}
+        onSelect={this.onSelect}
+        allParameters={allParameters || []}
         style={{ minWidth: 60 }}
         {...multipleValuesProps}
       />
@@ -196,6 +262,8 @@ class ParameterValueInput extends React.Component {
         return this.renderEnumInput();
       case "query":
         return this.renderQueryBasedInput();
+      case "external-api":
+        return this.renderExternalApiInput();
       case "number":
         return this.renderNumberInput();
       case "text-pattern":

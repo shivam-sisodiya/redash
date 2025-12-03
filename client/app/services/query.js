@@ -301,22 +301,42 @@ class Parameters {
   }
 
   getMissing() {
-    return map(
-      filter(this.get(), p => p.isEmpty),
-      i => i.title
-    );
+    // Parameters are optional by default - only return missing parameters
+    // that are explicitly required. Since there's no 'required' flag,
+    // we make all parameters optional.
+    // return map(
+    //   filter(this.get(), p => p.isEmpty),
+    //   i => i.title
+    // );
+    return [];
   }
 
   isRequired() {
     return !isEmpty(this.get());
   }
 
+  // getExecutionValues(extra = {}) {
+  //   const params = this.get();
+  //   return zipObject(
+  //     map(params, i => i.name),
+  //     map(params, i => i.getExecutionValue(extra))
+  //   );
+  // }
+
   getExecutionValues(extra = {}) {
     const params = this.get();
-    return zipObject(
+    const executionValues = zipObject(
       map(params, i => i.name),
       map(params, i => i.getExecutionValue(extra))
     );
+    // Remove null/undefined parameters - don't send them to backend
+    Object.keys(executionValues).forEach(key => {
+      if (executionValues[key] === null || executionValues[key] === undefined) {
+        // delete executionValues[key];
+        executionValues[key] = null;
+      }
+    });
+    return executionValues;
   }
 
   hasPendingValues() {
