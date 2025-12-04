@@ -66,6 +66,7 @@ function VisualizationEmbedFooter({
   apiKey,
   onDownloadStart,
   onDownloadComplete,
+  downloadStartedAt,
 }) {
 
   // Download handler that uses new async endpoint
@@ -173,8 +174,12 @@ function VisualizationEmbedFooter({
             </Link.Button>
           </Tooltip>
           {/* {!query.hasParameters() && ( */}
-            <Dropdown overlay={downloadMenu} disabled={!queryResults} trigger={["click"]} placement="topLeft">
-              <Button loading={!queryResults && !!refreshStartedAt} className="m-l-5">
+            <Dropdown 
+              overlay={downloadMenu} 
+              disabled={!queryResults || !!downloadStartedAt} 
+              trigger={["click"]} 
+              placement="topLeft">
+              <Button loading={(!queryResults && !!refreshStartedAt) || !!downloadStartedAt} className="m-l-5">
                 Download Dataset
                 <i className="fa fa-caret-up m-l-5" aria-hidden="true" />
               </Button>
@@ -197,6 +202,7 @@ VisualizationEmbedFooter.propTypes = {
   apiKey: PropTypes.string,
   onDownloadStart: PropTypes.func,
   onDownloadComplete: PropTypes.func,
+  downloadStartedAt: Moment,
 };
 
 VisualizationEmbedFooter.defaultProps = {
@@ -208,6 +214,7 @@ VisualizationEmbedFooter.defaultProps = {
   apiKey: null,
   onDownloadStart: () => {},
   onDownloadComplete: () => {},
+  downloadStartedAt: null,
 };
 
 function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
@@ -292,17 +299,17 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
           </div>
         )}
         {error && <div className="alert alert-danger" data-test="ErrorMessage">{`Error: ${error}`}</div>}
-        {(refreshStartedAt || downloadStartedAt) && (
+        {refreshStartedAt && (
           <div className="d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '200px' }}>
             <div className="spinner">
               <i className="zmdi zmdi-refresh zmdi-hc-spin zmdi-hc-5x" aria-hidden="true" />
             </div>
             <div className="m-t-15" style={{ fontSize: '16px', color: '#666' }}>
-              {downloadStartedAt ? 'Downloading...' : 'Refreshing...'}
+              Refreshing...
             </div>
           </div>
         )}
-        {!error && queryResults && !refreshStartedAt && !downloadStartedAt && (
+        {!error && queryResults && !refreshStartedAt && (
           <VisualizationRenderer visualization={visualization} queryResult={queryResults} context="widget" />
         )}
       </div>
@@ -316,6 +323,7 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
         apiKey={apiKey}
         onDownloadStart={() => setDownloadStartedAt(moment())}
         onDownloadComplete={() => setDownloadStartedAt(null)}
+        downloadStartedAt={downloadStartedAt}
       />
     </div>
   );
