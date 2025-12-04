@@ -64,11 +64,14 @@ function VisualizationEmbedFooter({
   queryUrl,
   hideTimestamp,
   apiKey,
+  onDownloadStart,
+  onDownloadComplete,
 }) {
 
   // Download handler that uses new async endpoint
   const handleDownload = async (fileType) => {
     try {
+      onDownloadStart();
       // Get current parameter values
       const parameters = query.getParameters ? query.getParameters().getExecutionValues() : {};
       
@@ -118,6 +121,7 @@ function VisualizationEmbedFooter({
               alert(`Download failed: ${errorMessage}`);
             }
           });
+          onDownloadComplete();
           return;
         }
         errorMessage = error.response.data?.message || error.message || errorMessage;
@@ -125,6 +129,8 @@ function VisualizationEmbedFooter({
         errorMessage = error.message || errorMessage;
       }
       alert(`Download failed: ${errorMessage}`);
+    } finally {
+      onDownloadComplete();
     }
   };
 
@@ -199,6 +205,8 @@ VisualizationEmbedFooter.propTypes = {
   queryUrl: PropTypes.string,
   hideTimestamp: PropTypes.bool,
   apiKey: PropTypes.string,
+  onDownloadStart: PropTypes.func,
+  onDownloadComplete: PropTypes.func,
 };
 
 VisualizationEmbedFooter.defaultProps = {
@@ -208,6 +216,8 @@ VisualizationEmbedFooter.defaultProps = {
   queryUrl: null,
   hideTimestamp: false,
   apiKey: null,
+  onDownloadStart: () => {},
+  onDownloadComplete: () => {},
 };
 
 function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
@@ -215,6 +225,7 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
   const [error, setError] = useState(null);
   const [refreshStartedAt, setRefreshStartedAt] = useState(null);
   const [queryResults, setQueryResults] = useState(null);
+  const [downloadStartedAt, setDownloadStartedAt] = useState(null);
 
   const handleError = useImmutableCallback(onError);
 
@@ -291,16 +302,18 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
           </div>
         )}
         {error && <div className="alert alert-danger" data-test="ErrorMessage">{`Error: ${error}`}</div>}
-        {!error && queryResults && (
-          <VisualizationRenderer visualization={visualization} queryResult={queryResults} context="widget" />
-        )}
-        {!queryResults && refreshStartedAt && (
-          <div className="d-flex justify-content-center">
+        {(refreshStartedAt || downloadStartedAt) && (
+          <div className="d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '200px' }}>
             <div className="spinner">
               <i className="zmdi zmdi-refresh zmdi-hc-spin zmdi-hc-5x" aria-hidden="true" />
-              <span className="sr-only">Refreshing...</span>
+            </div>
+            <div className="m-t-15" style={{ fontSize: '16px', color: '#666' }}>
+              {downloadStartedAt ? 'Downloading...' : 'Refreshing...'}
             </div>
           </div>
+        )}
+        {!error && queryResults && !refreshStartedAt && !downloadStartedAt && (
+          <VisualizationRenderer visualization={visualization} queryResult={queryResults} context="widget" />
         )}
       </div>
       <VisualizationEmbedFooter
@@ -311,6 +324,8 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
         queryUrl={!hideQueryLink ? query.getUrl() : null}
         hideTimestamp={hideTimestamp}
         apiKey={apiKey}
+        onDownloadStart={() => setDownloadStartedAt(moment())}
+        onDownloadComplete={() => setDownloadStartedAt(null)}
       />
     </div>
   );
