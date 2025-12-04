@@ -139,22 +139,12 @@ function VisualizationEmbedFooter({
       <Menu.Item onClick={() => handleDownload('csv')}>
         <FileOutlinedIcon /> Download as CSV File
       </Menu.Item>
-      <Menu.Item onClick={() => handleDownload('tsv')}>
+      {/* <Menu.Item onClick={() => handleDownload('tsv')}>
         <FileOutlinedIcon /> Download as TSV File
-      </Menu.Item>
-      <Menu.Item onClick={() => handleDownload('xlsx')}>
+      </Menu.Item> */}
+      {/* <Menu.Item onClick={() => handleDownload('xlsx')}>
         <FileExcelOutlinedIcon /> Download as Excel File
-      </Menu.Item>
-      {/* <Menu.Item>
-        <QueryResultsLink
-          fileType="pdf"
-          query={query}
-          queryResult={queryResults}
-          apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
-          embed>
-          <FileExcelOutlinedIcon /> Download as Pdf File
-        </QueryResultsLink> */}
+      </Menu.Item> */}
       <Menu.Item onClick={() => handleDownload('pdf')}>
         <FileExcelOutlinedIcon /> Download as Pdf File
       </Menu.Item>
