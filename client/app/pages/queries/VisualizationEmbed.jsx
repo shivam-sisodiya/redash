@@ -64,11 +64,15 @@ function VisualizationEmbedFooter({
   queryUrl,
   hideTimestamp,
   apiKey,
+  onDownloadStart,
+  onDownloadComplete,
+  downloadStartedAt,
 }) {
 
   // Download handler that uses new async endpoint
   const handleDownload = async (fileType) => {
     try {
+      onDownloadStart();
       // Get current parameter values
       const parameters = query.getParameters ? query.getParameters().getExecutionValues() : {};
       
@@ -118,6 +122,7 @@ function VisualizationEmbedFooter({
               alert(`Download failed: ${errorMessage}`);
             }
           });
+          onDownloadComplete();
           return;
         }
         errorMessage = error.response.data?.message || error.message || errorMessage;
@@ -125,6 +130,8 @@ function VisualizationEmbedFooter({
         errorMessage = error.message || errorMessage;
       }
       alert(`Download failed: ${errorMessage}`);
+    } finally {
+      onDownloadComplete();
     }
   };
 
@@ -133,22 +140,12 @@ function VisualizationEmbedFooter({
       <Menu.Item onClick={() => handleDownload('csv')}>
         <FileOutlinedIcon /> Download as CSV File
       </Menu.Item>
-      <Menu.Item onClick={() => handleDownload('tsv')}>
+      {/* <Menu.Item onClick={() => handleDownload('tsv')}>
         <FileOutlinedIcon /> Download as TSV File
-      </Menu.Item>
-      <Menu.Item onClick={() => handleDownload('xlsx')}>
+      </Menu.Item> */}
+      {/* <Menu.Item onClick={() => handleDownload('xlsx')}>
         <FileExcelOutlinedIcon /> Download as Excel File
-      </Menu.Item>
-      {/* <Menu.Item>
-        <QueryResultsLink
-          fileType="pdf"
-          query={query}
-          queryResult={queryResults}
-          apiKey={apiKey}
-          disabled={!queryResults || !queryResults.getData || !queryResults.getData()}
-          embed>
-          <FileExcelOutlinedIcon /> Download as Pdf File
-        </QueryResultsLink> */}
+      </Menu.Item> */}
       <Menu.Item onClick={() => handleDownload('pdf')}>
         <FileExcelOutlinedIcon /> Download as Pdf File
       </Menu.Item>
@@ -177,8 +174,12 @@ function VisualizationEmbedFooter({
             </Link.Button>
           </Tooltip>
           {/* {!query.hasParameters() && ( */}
-            <Dropdown overlay={downloadMenu} disabled={!queryResults} trigger={["click"]} placement="topLeft">
-              <Button loading={!queryResults && !!refreshStartedAt} className="m-l-5">
+            <Dropdown 
+              overlay={downloadMenu} 
+              disabled={!queryResults || !!downloadStartedAt} 
+              trigger={["click"]} 
+              placement="topLeft">
+              <Button loading={(!queryResults && !!refreshStartedAt) || !!downloadStartedAt} className="m-l-5">
                 Download Dataset
                 <i className="fa fa-caret-up m-l-5" aria-hidden="true" />
               </Button>
@@ -199,6 +200,9 @@ VisualizationEmbedFooter.propTypes = {
   queryUrl: PropTypes.string,
   hideTimestamp: PropTypes.bool,
   apiKey: PropTypes.string,
+  onDownloadStart: PropTypes.func,
+  onDownloadComplete: PropTypes.func,
+  downloadStartedAt: Moment,
 };
 
 VisualizationEmbedFooter.defaultProps = {
@@ -208,6 +212,9 @@ VisualizationEmbedFooter.defaultProps = {
   queryUrl: null,
   hideTimestamp: false,
   apiKey: null,
+  onDownloadStart: () => {},
+  onDownloadComplete: () => {},
+  downloadStartedAt: null,
 };
 
 function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
@@ -215,6 +222,7 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
   const [error, setError] = useState(null);
   const [refreshStartedAt, setRefreshStartedAt] = useState(null);
   const [queryResults, setQueryResults] = useState(null);
+  const [downloadStartedAt, setDownloadStartedAt] = useState(null);
 
   const handleError = useImmutableCallback(onError);
 
@@ -291,16 +299,18 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
           </div>
         )}
         {error && <div className="alert alert-danger" data-test="ErrorMessage">{`Error: ${error}`}</div>}
-        {!error && queryResults && (
-          <VisualizationRenderer visualization={visualization} queryResult={queryResults} context="widget" />
-        )}
-        {!queryResults && refreshStartedAt && (
-          <div className="d-flex justify-content-center">
+        {refreshStartedAt && (
+          <div className="d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '200px' }}>
             <div className="spinner">
               <i className="zmdi zmdi-refresh zmdi-hc-spin zmdi-hc-5x" aria-hidden="true" />
-              <span className="sr-only">Refreshing...</span>
+            </div>
+            <div className="m-t-15" style={{ fontSize: '16px', color: '#666' }}>
+              Refreshing...
             </div>
           </div>
+        )}
+        {!error && queryResults && !refreshStartedAt && (
+          <VisualizationRenderer visualization={visualization} queryResult={queryResults} context="widget" />
         )}
       </div>
       <VisualizationEmbedFooter
@@ -311,6 +321,9 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
         queryUrl={!hideQueryLink ? query.getUrl() : null}
         hideTimestamp={hideTimestamp}
         apiKey={apiKey}
+        onDownloadStart={() => setDownloadStartedAt(moment())}
+        onDownloadComplete={() => setDownloadStartedAt(null)}
+        downloadStartedAt={downloadStartedAt}
       />
     </div>
   );
