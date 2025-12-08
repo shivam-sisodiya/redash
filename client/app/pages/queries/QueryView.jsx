@@ -187,26 +187,24 @@ function QueryView(props) {
             />
           )}
           <div className="query-results-footer">
-            {queryResult && !queryResult.getError() && (
-              <QueryExecutionMetadata
-                query={query}
-                queryResult={queryResult}
-                selectedVisualization={selectedVisualization}
-                isQueryExecuting={isExecuting}
-                showEditVisualizationButton={queryFlags.canEdit}
-                onEditVisualization={editVisualization}
-                extraActions={
-                  <QueryViewButton
-                    className="icon-button m-r-5 hidden-xs"
-                    title="Toggle Fullscreen"
-                    type="default"
-                    shortcut="alt+f"
-                    onClick={toggleFullscreen}>
-                    {fullscreen ? <FullscreenExitOutlinedIcon /> : <FullscreenOutlinedIcon />}
-                  </QueryViewButton>
-                }
-              />
-            )}
+            <QueryExecutionMetadata
+              query={query}
+              queryResult={queryResult}
+              selectedVisualization={selectedVisualization}
+              isQueryExecuting={isExecuting}
+              showEditVisualizationButton={queryFlags.canEdit}
+              onEditVisualization={editVisualization}
+              extraActions={
+                <QueryViewButton
+                  className="icon-button m-r-5 hidden-xs"
+                  title="Toggle Fullscreen"
+                  type="default"
+                  shortcut="alt+f"
+                  onClick={toggleFullscreen}>
+                  {fullscreen ? <FullscreenExitOutlinedIcon /> : <FullscreenOutlinedIcon />}
+                </QueryViewButton>
+              }
+            />
             {(executionError || isExecuting) && (
               <div className="query-execution-status">
                 <QueryExecutionStatus

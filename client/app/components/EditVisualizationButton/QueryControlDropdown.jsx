@@ -15,7 +15,11 @@ import EllipsisOutlinedIcon from "@ant-design/icons/EllipsisOutlined";
 
 export default function QueryControlDropdown(props) {
   const [isDownloading, setIsDownloading] = useState(false);
-  const isDownloadDisabled = props.queryExecuting || !props.queryResult.getData || !props.queryResult.getData() || isDownloading;
+  const isDownloadDisabled = props.queryExecuting || 
+                             !props.queryResult || 
+                             !props.queryResult.getData || 
+                             !props.queryResult.getData() || 
+                             isDownloading;
 
   // Download handler that uses new async endpoint (removes limits)
   const handleDownload = async (fileType) => {
@@ -144,7 +148,7 @@ QueryControlDropdown.propTypes = {
 };
 
 QueryControlDropdown.defaultProps = {
-  queryResult: {},
+  queryResult: null,
   embed: false,
   apiKey: "",
   selectedTab: "",
