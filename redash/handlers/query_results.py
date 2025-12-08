@@ -106,7 +106,6 @@ def run_query(query, parameters, data_source, query_id, should_apply_auto_limit,
         abort(400, message=str(e))
 
     query_text = data_source.query_runner.apply_auto_limit(query.text, should_apply_auto_limit)
-    
     # Remove LIMIT clauses for downloads
     if remove_limit:
         query_text = remove_limit_from_query(query_text)
