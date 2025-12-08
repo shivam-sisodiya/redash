@@ -30,6 +30,7 @@ export default class Parameters extends React.Component {
     onPendingValuesChange: PropTypes.func,
     onParametersEdit: PropTypes.func,
     appendSortableToParent: PropTypes.bool,
+    alwaysShowApplyButton: PropTypes.bool,
   };
 
   static defaultProps = {
@@ -41,6 +42,7 @@ export default class Parameters extends React.Component {
     onPendingValuesChange: () => {},
     onParametersEdit: () => {},
     appendSortableToParent: true,
+    alwaysShowApplyButton: false,
   };
 
   toCamelCase = (str) => {
@@ -172,7 +174,7 @@ export default class Parameters extends React.Component {
 
   render() {
     const { parameters } = this.state;
-    const { sortable, appendSortableToParent } = this.props;
+    const { sortable, appendSortableToParent, alwaysShowApplyButton } = this.props;
     const dirtyParamCount = size(filter(parameters, "hasPendingValue"));
     return (
       <SortableContainer
@@ -202,7 +204,11 @@ export default class Parameters extends React.Component {
               </div>
             </SortableElement>
           ))}
-        <ParameterApplyButton onClick={this.applyChanges} paramCount={dirtyParamCount} />
+        <ParameterApplyButton 
+          onClick={this.applyChanges} 
+          paramCount={dirtyParamCount} 
+          alwaysVisible={alwaysShowApplyButton}
+        />
       </SortableContainer>
     );
   }
