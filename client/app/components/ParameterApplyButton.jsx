@@ -5,19 +5,16 @@ import Badge from "antd/lib/badge";
 import Tooltip from "@/components/Tooltip";
 import KeyboardShortcuts from "@/services/KeyboardShortcuts";
 
-function ParameterApplyButton({ paramCount, onClick }) {
-  // show spinner when count is empty so the fade out is consistent
-  const icon = !paramCount ? (
-    <span role="status" aria-live="polite" aria-relevant="additions removals">
-      <i className="fa fa-spinner fa-pulse" aria-hidden="true" />
-      <span className="sr-only">Loading...</span>
-    </span>
-  ) : (
-    <i className="fa fa-check" aria-hidden="true" />
-  );
+function ParameterApplyButton({ paramCount, onClick, alwaysVisible = false }) {
+  // Always show tick icon (no spinner)
+  const icon = <i className="fa fa-check" aria-hidden="true" />;
+
+  // If alwaysVisible is true, always show the button (data-show="true")
+  // Otherwise, only show when there are pending changes
+  const shouldShow = alwaysVisible || !!paramCount;
 
   return (
-    <div className="parameter-apply-button" data-show={!!paramCount} data-test="ParameterApplyButton">
+    <div className="parameter-apply-button" data-show={shouldShow} data-test="ParameterApplyButton">
       <Badge count={paramCount}>
         <Tooltip title={paramCount ? `${KeyboardShortcuts.modKey} + Enter` : null}>
           <span>
@@ -32,6 +29,7 @@ function ParameterApplyButton({ paramCount, onClick }) {
 ParameterApplyButton.propTypes = {
   onClick: PropTypes.func.isRequired,
   paramCount: PropTypes.number.isRequired,
+  alwaysVisible: PropTypes.bool,
 };
 
 export default ParameterApplyButton;

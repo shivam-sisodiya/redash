@@ -257,10 +257,23 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
     }
   }, [query]);
 
+  // Load cached results on mount (don't auto-execute)
   useEffect(() => {
     document.querySelector("body").classList.add("headless");
-    refreshQueryResults();
-  }, [refreshQueryResults]);
+    if (query) {
+      // Try to load cached results without executing
+      // maxAge = -1 means use cache if available, don't execute
+      const queryResult = query.getQueryResult(-1);
+      queryResult
+        .toPromise()
+        .then(result => {
+          setQueryResults(result);
+        })
+        .catch(() => {
+          // If no cached result, that's okay - user can click Apply Changes
+        });
+    }
+  }, [query]); // Only depend on query, not refreshQueryResults
 
   if (!query) {
     return null;
@@ -294,8 +307,12 @@ function VisualizationEmbed({ queryId, visualizationId, apiKey, onError }) {
       )}
       <div className="col-md-12 query__vis">
         {!hideParametersUI && query.hasParameters() && (
-          <div className="p-t-15 p-b-10">
-            <Parameters parameters={query.getParametersDefs()} onValuesChange={refreshQueryResults} />
+          <div className="p-t-15 p-b-10" style={{ marginBottom: '20px' }}>
+            <Parameters 
+              parameters={query.getParametersDefs()} 
+              onValuesChange={refreshQueryResults}
+              alwaysShowApplyButton={true}
+            />
           </div>
         )}
         {error && <div className="alert alert-danger" data-test="ErrorMessage">{`Error: ${error}`}</div>}

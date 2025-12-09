@@ -294,7 +294,18 @@ class BaseSQLQueryRunner(BaseQueryRunner):
         parsed_query = parsed_query_list[0]
         last_keyword_idx = find_last_keyword_idx(parsed_query)
         # Either invalid query or query that is not select
-        if last_keyword_idx == -1 or parsed_query.tokens[0].value.upper() != "SELECT":
+        if last_keyword_idx == -1:
+            return False
+        
+        # Find first keyword (skip comments and whitespace)
+        first_keyword = None
+        for token in parsed_query.tokens:
+            if token.ttype in sqlparse.tokens.Keyword:
+                first_keyword = token.value.upper()
+                break
+        
+        # Accept both SELECT and WITH (CTE) queries as SELECT queries
+        if first_keyword not in ("SELECT", "WITH"):
             return False
 
         no_limit = parsed_query.tokens[last_keyword_idx].value.upper() not in self.limit_keywords

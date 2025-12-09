@@ -402,18 +402,16 @@ function QuerySource(props) {
               </section>
             </div>
           </div>
-          {queryResult && !queryResult.getError() && (
-            <div className="bottom-controller-container">
-              <QueryExecutionMetadata
-                query={query}
-                queryResult={queryResult}
-                selectedVisualization={selectedVisualization}
-                isQueryExecuting={isQueryExecuting}
-                showEditVisualizationButton={!queryFlags.isNew && queryFlags.canEdit}
-                onEditVisualization={editVisualization}
-              />
-            </div>
-          )}
+          <div className="bottom-controller-container">
+            <QueryExecutionMetadata
+              query={query}
+              queryResult={queryResult}
+              selectedVisualization={selectedVisualization}
+              isQueryExecuting={isQueryExecuting}
+              showEditVisualizationButton={!queryFlags.isNew && queryFlags.canEdit}
+              onEditVisualization={editVisualization}
+            />
+          </div>
         </div>
       </main>
     </div>

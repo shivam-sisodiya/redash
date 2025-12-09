@@ -25,6 +25,8 @@ export default function QueryExecutionMetadata({
   const queryResultData = useQueryResultData(queryResult);
   const openAddToDashboardDialog = useAddToDashboardDialog(query);
   const openEmbedDialog = useEmbedDialog(query);
+  const hasQueryResult = queryResult && !queryResult.getError();
+  
   return (
     <div className="query-execution-metadata">
       <span className="m-r-5">
@@ -43,53 +45,57 @@ export default function QueryExecutionMetadata({
       {showEditVisualizationButton && (
         <EditVisualizationButton openVisualizationEditor={onEditVisualization} selectedTab={selectedVisualization} />
       )}
-      <span className="m-l-5 m-r-10">
-        <span>
-          {queryResultData.truncated === true && (
-            <span className="m-r-5">
-              <Tooltip
-                title={
-                  "Result truncated to " +
-                  queryResultData.rows.length +
-                  " rows. Databricks may truncate query results that are unstably large."
-                }
-              >
-                <WarningTwoTone twoToneColor="#FF9800" />
-              </Tooltip>
+      {hasQueryResult && (
+        <span className="m-l-5 m-r-10">
+          <span>
+            {queryResultData.truncated === true && (
+              <span className="m-r-5">
+                <Tooltip
+                  title={
+                    "Result truncated to " +
+                    queryResultData.rows.length +
+                    " rows. Databricks may truncate query results that are unstably large."
+                  }
+                >
+                  <WarningTwoTone twoToneColor="#FF9800" />
+                </Tooltip>
+              </span>
+            )}
+            <strong>{queryResultData.rows.length}</strong> {pluralize("row", queryResultData.rows.length)}
+          </span>
+          <span className="m-l-5">
+            {!isQueryExecuting && (
+              <React.Fragment>
+                <strong>{durationHumanize(queryResultData.runtime)}</strong>
+                <span className="hidden-xs"> runtime</span>
+              </React.Fragment>
+            )}
+            {isQueryExecuting && <span>Running&hellip;</span>}
+          </span>
+          {!isUndefined(queryResultData.metadata.data_scanned) && !isQueryExecuting && (
+            <span className="m-l-5">
+              Data Scanned <strong>{prettySize(queryResultData.metadata.data_scanned)}</strong>
             </span>
           )}
-          <strong>{queryResultData.rows.length}</strong> {pluralize("row", queryResultData.rows.length)}
         </span>
-        <span className="m-l-5">
-          {!isQueryExecuting && (
-            <React.Fragment>
-              <strong>{durationHumanize(queryResultData.runtime)}</strong>
-              <span className="hidden-xs"> runtime</span>
-            </React.Fragment>
-          )}
-          {isQueryExecuting && <span>Running&hellip;</span>}
-        </span>
-        {!isUndefined(queryResultData.metadata.data_scanned) && !isQueryExecuting && (
-          <span className="m-l-5">
-            Data Scanned <strong>{prettySize(queryResultData.metadata.data_scanned)}</strong>
+      )}
+      {hasQueryResult && (
+        <div>
+          <span className="m-r-10">
+            <span className="hidden-xs">Refreshed </span>
+            <strong>
+              <TimeAgo date={queryResultData.retrievedAt} placeholder="-" />
+            </strong>
           </span>
-        )}
-      </span>
-      <div>
-        <span className="m-r-10">
-          <span className="hidden-xs">Refreshed </span>
-          <strong>
-            <TimeAgo date={queryResultData.retrievedAt} placeholder="-" />
-          </strong>
-        </span>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
 QueryExecutionMetadata.propTypes = {
   query: PropTypes.object.isRequired, // eslint-disable-line react/forbid-prop-types
-  queryResult: PropTypes.object.isRequired, // eslint-disable-line react/forbid-prop-types
+  queryResult: PropTypes.object, // eslint-disable-line react/forbid-prop-types
   isQueryExecuting: PropTypes.bool,
   selectedVisualization: PropTypes.number,
   showEditVisualizationButton: PropTypes.bool,
@@ -98,6 +104,7 @@ QueryExecutionMetadata.propTypes = {
 };
 
 QueryExecutionMetadata.defaultProps = {
+  queryResult: null,
   isQueryExecuting: false,
   selectedVisualization: null,
   showEditVisualizationButton: false,
