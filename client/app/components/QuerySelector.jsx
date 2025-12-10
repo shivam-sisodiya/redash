@@ -51,6 +51,13 @@ export default function QuerySelector(props) {
     doSearch(searchTerm);
   }, [doSearch, searchTerm]);
 
+  // Load recent queries on mount if no search term
+  useEffect(() => {
+    if (!searchTerm && (!searchResults || searchResults.length === 0)) {
+      doSearch("");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // set selected from prop
   useEffect(() => {
     if (props.selectedQuery) {
@@ -112,6 +119,12 @@ export default function QuerySelector(props) {
         value={value || undefined} // undefined for the placeholder to show
         onSearch={setSearchTerm}
         onChange={selectQuery}
+        onDropdownVisibleChange={(open) => {
+          // When dropdown opens and there are no results, load recent queries
+          if (open && (!searchResults || searchResults.length === 0) && !searchTerm) {
+            doSearch("");
+          }
+        }}
         suffixIcon={searching ? spinIcon : suffixIcon}
         notFoundContent={null}
         filterOption={false}
