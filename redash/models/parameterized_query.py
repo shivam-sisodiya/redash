@@ -29,10 +29,37 @@ def _load_result(query_id, org):
         raise QueryDetachedFromDataSourceError(query_id)
 
 
-def dropdown_values(query_id, org):
+def dropdown_values(query_id, org, column_name=None):
+    """
+    Get dropdown values from a query.
+    
+    Args:
+        query_id: ID of the query
+        org: Organization
+        column_name: Optional column name to use. If None, uses first column.
+                    Column name matching is case-insensitive.
+    
+    Returns:
+        List of dicts with 'name' and 'value' keys
+    """
     data = _load_result(query_id, org)
-    first_column = data["columns"][0]["name"]
-    pluck = partial(_pluck_name_and_value, first_column)
+    
+    if column_name:
+        # Find column by name (case-insensitive)
+        column_to_use = None
+        column_name_lower = column_name.lower()
+        for col in data["columns"]:
+            if col["name"].lower() == column_name_lower:
+                column_to_use = col["name"]
+                break
+        # If not found, fall back to first column
+        if not column_to_use:
+            column_to_use = data["columns"][0]["name"]
+    else:
+        # Default to first column
+        column_to_use = data["columns"][0]["name"]
+    
+    pluck = partial(_pluck_name_and_value, column_to_use)
     return list(map(pluck, data["rows"]))
 
 
@@ -45,7 +72,8 @@ def join_parameter_list_values(parameters, schema):
             separator = str(multi_values_options.get("separator", ","))
             prefix = str(multi_values_options.get("prefix", ""))
             suffix = str(multi_values_options.get("suffix", ""))
-            updated_parameters[key] = separator.join([prefix + v + suffix for v in value])
+            # Convert each value to string to handle integers and other types
+            updated_parameters[key] = separator.join([prefix + str(v) + suffix for v in value])
         else:
             updated_parameters[key] = value
     return updated_parameters
@@ -177,6 +205,22 @@ class ParameterizedQuery:
         query_id = definition.get("queryId")
         regex = definition.get("regex")
         allow_multiple_values = isinstance(definition.get("multiValuesOptions"), dict)
+        # For query-with-parent, determine which column to use for validation
+        child_value_column = None
+        if definition.get("type") == "query-with-parent":
+            child_value_column = definition.get("childValueColumn")
+            # If not specified, infer from number of parent keywords
+            if not child_value_column and query_id:
+                try:
+                    data = _load_result(query_id, self.org)
+                    parent_count = len(definition.get("parentKeywords", []))
+                    # Child column is after all parent columns
+                    child_col_index = parent_count
+                    if child_col_index < len(data["columns"]):
+                        child_value_column = data["columns"][child_col_index]["name"]
+                except Exception:
+                    # If we can't load the query, fall back to first column
+                    pass
 
         if isinstance(enum_options, str):
             enum_options = enum_options.split("\n")
@@ -191,6 +235,11 @@ class ParameterizedQuery:
                 [v["value"] for v in dropdown_values(query_id, self.org)],
                 allow_multiple_values,
             ),
+            "query-with-parent": lambda value: _is_value_within_options(
+                value,
+                [v["value"] for v in dropdown_values(query_id, self.org, child_value_column)],
+                allow_multiple_values,
+            ),  # Validates against child value column from query results
             "external-api": lambda value: True,  # External API parameters - skip validation (handled by frontend)
             "date": _is_date,
             "datetime-local": _is_date,

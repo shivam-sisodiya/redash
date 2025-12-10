@@ -7,6 +7,7 @@ import InputNumber from "antd/lib/input-number";
 import DateParameter from "@/components/dynamic-parameters/DateParameter";
 import DateRangeParameter from "@/components/dynamic-parameters/DateRangeParameter";
 import QueryBasedParameterInput from "./QueryBasedParameterInput";
+import ParentQueryBasedParameterInput from "./ParentQueryBasedParameterInput";
 import ExternalApiParameterInput from "./ExternalApiParameterInput";
 
 import "./ParameterValueInput.less";
@@ -28,6 +29,7 @@ class ParameterValueInput extends React.Component {
     onSelect: PropTypes.func,
     className: PropTypes.string,
     regex: PropTypes.string,
+    allParameters: PropTypes.array,
   };
 
   static defaultProps = {
@@ -179,6 +181,24 @@ class ParameterValueInput extends React.Component {
     );
   }
 
+  renderParentQueryBasedInput() {
+    const { queryId, parameter, allParameters } = this.props;
+    const { value } = this.state;
+    return (
+      <ParentQueryBasedParameterInput
+        className={this.props.className}
+        mode={parameter.multiValuesOptions ? "multiple" : "default"}
+        parameter={parameter}
+        value={value}
+        queryId={queryId}
+        onSelect={this.onSelect}
+        allParameters={allParameters || []}
+        style={{ minWidth: 60 }}
+        {...multipleValuesProps}
+      />
+    );
+  }
+
   renderExternalApiInput() {
     const { parameter, allParameters } = this.props;
     const { value } = this.state;
@@ -262,6 +282,8 @@ class ParameterValueInput extends React.Component {
         return this.renderEnumInput();
       case "query":
         return this.renderQueryBasedInput();
+      case "query-with-parent":
+        return this.renderParentQueryBasedInput();
       case "external-api":
         return this.renderExternalApiInput();
       case "number":
