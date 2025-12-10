@@ -74,16 +74,27 @@ function EditParameterSettingsDialog(props) {
   const [initialQuery, setInitialQuery] = useState();
   const [userInput, setUserInput] = useState(param.regex || "");
   const [isValidRegex, setIsValidRegex] = useState(true);
+  // Store raw parent keywords input to preserve trailing commas while typing
+  const [parentKeywordsInput, setParentKeywordsInput] = useState(
+    Array.isArray(param.parentKeywords) ? param.parentKeywords.join(", ") : (param.parentKeywords || "")
+  );
 
   const isNew = !props.parameter.name;
 
-  // fetch query by id
+  // fetch query by id - watch both props and local state
   useEffect(() => {
-    const queryId = props.parameter.queryId;
+    const queryId = param.queryId || props.parameter.queryId;
     if (queryId) {
-      Query.get({ id: queryId }).then(setInitialQuery);
+      Query.get({ id: queryId })
+        .then(setInitialQuery)
+        .catch(() => {
+          // If query fetch fails, clear it
+          setInitialQuery(null);
+        });
+    } else {
+      setInitialQuery(null);
     }
-  }, [props.parameter.queryId]);
+  }, [param.queryId, props.parameter.queryId]);
 
   function isFulfilled() {
     // name
@@ -99,6 +110,16 @@ function EditParameterSettingsDialog(props) {
     // query
     if (param.type === "query" && !param.queryId) {
       return false;
+    }
+
+    // query-with-parent
+    if (param.type === "query-with-parent") {
+      if (!param.queryId) {
+        return false;
+      }
+      if (!param.parentKeywords || param.parentKeywords.length === 0) {
+        return false;
+      }
     }
 
     // external-api - no additional validation needed (hardcoded configuration)
@@ -191,6 +212,7 @@ function EditParameterSettingsDialog(props) {
             </Option>
             <Option value="enum">Dropdown List</Option>
             <Option value="query">Query Based Dropdown List</Option>
+            <Option value="query-with-parent">Query Based Dropdown (with Parent Filter)</Option>
             <Option value="external-api">External API Dropdown</Option>
             <Option disabled key="dv1">
               <Divider className="select-option-divider" />
@@ -239,10 +261,95 @@ function EditParameterSettingsDialog(props) {
           <Form.Item label="Query" help="Select query to load dropdown values from" {...formItemProps}>
             <QuerySelector
               selectedQuery={initialQuery}
-              onChange={(q) => setParam({ ...param, queryId: q && q.id })}
+              onChange={(q) => {
+                // Immediately set initialQuery to the selected query to keep UI in sync
+                if (q) {
+                  setInitialQuery(q);
+                } else {
+                  setInitialQuery(null);
+                }
+                setParam({ ...param, queryId: q && q.id });
+              }}
               type="select"
             />
           </Form.Item>
+        )}
+        {param.type === "query-with-parent" && (
+          <React.Fragment>
+            <Form.Item
+              label="Query"
+              help="Select query that returns parent key and child value columns"
+              {...formItemProps}
+            >
+              <QuerySelector
+                selectedQuery={initialQuery}
+                onChange={(q) => {
+                  // Immediately set initialQuery to the selected query to keep UI in sync
+                  if (q) {
+                    setInitialQuery(q);
+                  } else {
+                    setInitialQuery(null);
+                  }
+                  setParam({ ...param, queryId: q && q.id });
+                }}
+                type="select"
+              />
+            </Form.Item>
+            <Form.Item
+              required
+              label="Parent Keywords"
+              help="Comma-separated list of parent parameter titles/keywords (e.g., 'Zone, Region')"
+              {...formItemProps}
+            >
+              <Input
+                value={parentKeywordsInput}
+                onChange={(e) => {
+                  const inputValue = e.target.value;
+                  // Preserve raw input while typing (allows trailing commas)
+                  setParentKeywordsInput(inputValue);
+                  // Parse keywords for validation (but don't update display)
+                  const keywords = inputValue
+                    .split(",")
+                    .map((k) => k.trim())
+                    .filter((k) => k.length > 0);
+                  setParam({ ...param, parentKeywords: keywords });
+                }}
+                onBlur={(e) => {
+                  // On blur, clean up trailing commas and whitespace
+                  const inputValue = e.target.value.trim().replace(/,\s*$/, ""); // Remove trailing comma
+                  setParentKeywordsInput(inputValue);
+                  const keywords = inputValue
+                    .split(",")
+                    .map((k) => k.trim())
+                    .filter((k) => k.length > 0);
+                  setParam({ ...param, parentKeywords: keywords });
+                }}
+                placeholder="e.g., Zone, Region"
+              />
+            </Form.Item>
+            <Form.Item
+              label="Parent Key Column(s)"
+              help="Column name(s) for parent key(s). For multiple parents, use comma-separated (e.g., 'zone, region'). Default: first N columns for N parents."
+              {...formItemProps}
+            >
+              <Input
+                value={param.parentKeyColumn || ""}
+                onChange={(e) => setParam({ ...param, parentKeyColumn: e.target.value || null })}
+                placeholder="e.g., zone, region (or leave empty for auto)"
+              />
+            </Form.Item>
+            <Form.Item
+              label="Child Value Column"
+              help="Column name for child value (default: second column)"
+              {...formItemProps}
+            >
+              <Input
+                value={param.childValueColumn || ""}
+                onChange={(e) => setParam({ ...param, childValueColumn: e.target.value || null })}
+                placeholder="Leave empty to use second column"
+              />
+            </Form.Item>
+          </React.Fragment>
         )}
         {param.type === "external-api" && (
           <Form.Item
@@ -253,7 +360,7 @@ function EditParameterSettingsDialog(props) {
             <Input disabled value="External API (Auto-configured)" style={{ color: "#999" }} />
           </Form.Item>
         )}
-        {(param.type === "enum" || param.type === "query") && (
+        {(param.type === "enum" || param.type === "query" || param.type === "query-with-parent") && (
           <Form.Item className="m-b-0" label=" " colon={false} {...formItemProps}>
             <Checkbox
               defaultChecked={!!param.multiValuesOptions}
@@ -303,7 +410,7 @@ function EditParameterSettingsDialog(props) {
             </Form.Item>
           </React.Fragment>
         )}
-        {(param.type === "enum" || param.type === "query") && param.multiValuesOptions && (
+        {(param.type === "enum" || param.type === "query" || param.type === "query-with-parent") && param.multiValuesOptions && (
           <Form.Item
             label="Quotation"
             help={
