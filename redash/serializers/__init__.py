@@ -16,7 +16,10 @@ from redash.serializers.query_result import (
     serialize_query_result,
     serialize_query_result_to_dsv,
     serialize_query_result_to_xlsx,
-    serialize_query_result_to_pdf
+    serialize_query_result_to_pdf,
+    serialize_data_to_dsv,
+    serialize_data_to_xlsx,
+    serialize_data_to_pdf,
 )
 
 

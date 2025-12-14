@@ -81,9 +81,13 @@ def serialize_query_result(query_result, is_api_user):
 
 
 def serialize_query_result_to_dsv(query_result, delimiter):
-    s = io.StringIO()
+    query_data = query_result.data if hasattr(query_result, 'data') else query_result
+    return serialize_data_to_dsv(query_data, delimiter)
 
-    query_data = query_result.data
+
+def serialize_data_to_dsv(query_data, delimiter):
+    """Serialize data dict directly to DSV format (CSV/TSV) without QueryResult object."""
+    s = io.StringIO()
 
     fieldnames, special_columns = _get_column_lists(query_data["columns"] or [])
 
@@ -101,9 +105,14 @@ def serialize_query_result_to_dsv(query_result, delimiter):
 
 
 def serialize_query_result_to_xlsx(query_result):
+    query_data = query_result.data if hasattr(query_result, 'data') else query_result
+    return serialize_data_to_xlsx(query_data)
+
+
+def serialize_data_to_xlsx(query_data):
+    """Serialize data dict directly to XLSX format without QueryResult object."""
     output = io.BytesIO()
 
-    query_data = query_result.data
     book = xlsxwriter.Workbook(output, {"constant_memory": True})
     sheet = book.add_worksheet("result")
 
@@ -124,7 +133,12 @@ def serialize_query_result_to_xlsx(query_result):
     return output.getvalue()
 
 def serialize_query_result_to_pdf(query_result):
-    query_data = query_result.data
+    query_data = query_result.data if hasattr(query_result, 'data') else query_result
+    return serialize_data_to_pdf(query_data)
+
+
+def serialize_data_to_pdf(query_data):
+    """Serialize data dict directly to PDF format without QueryResult object."""
     rows = query_data.get("rows") or []
     columns_meta = query_data.get("columns") or []
     column_names = [c["name"] for c in columns_meta[:20]]
