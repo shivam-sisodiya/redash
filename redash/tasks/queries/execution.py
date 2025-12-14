@@ -234,6 +234,15 @@ class QueryExecutor:
                 track_failure(self.query_model, error)
             raise result
         else:
+            # Check if this is a download request - skip storage if so
+            is_download = self.metadata.get("is_download", False)
+            
+            if is_download:
+                # For downloads, return data directly without storing in database
+                # This avoids storing large result sets that won't be reused
+                return {"data": data, "run_time": run_time, "retrieved_at": utcnow()}
+            
+            # Normal flow: store result in database
             if self.query_model and self.query_model.schedule_failures > 0:
                 self.query_model = models.db.session.merge(self.query_model, load=False)
                 self.query_model.schedule_failures = 0
