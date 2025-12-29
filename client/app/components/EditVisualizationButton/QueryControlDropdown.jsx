@@ -6,6 +6,7 @@ import Button from "antd/lib/button";
 import PlainButton from "@/components/PlainButton";
 import { clientConfig } from "@/services/auth";
 import axiosLib from "axios";
+import PDFOrientationDialog from "@/components/PDFOrientationDialog";
 
 import PlusCircleFilledIcon from "@ant-design/icons/PlusCircleFilled";
 import ShareAltOutlinedIcon from "@ant-design/icons/ShareAltOutlined";
@@ -22,13 +23,19 @@ export default function QueryControlDropdown(props) {
                              isDownloading;
 
   // Download handler that uses new async endpoint (removes limits)
-  const handleDownload = async (fileType) => {
+  const handleDownload = async (fileType, orientation = null) => {
     if (isDownloading) return; // Prevent multiple simultaneous downloads
     
     try {
       setIsDownloading(true);
       // Get current parameter values
       const parameters = props.query.getParameters ? props.query.getParameters().getExecutionValues() : {};
+      
+      // Build request body with parameters and orientation (for PDF)
+      const requestBody = { parameters };
+      if (fileType === 'pdf' && orientation) {
+        requestBody.orientation = orientation;
+      }
       
       // Build URL with API key if needed
       let url = `api/queries/${props.query.id}/download.${fileType}`;
@@ -37,7 +44,7 @@ export default function QueryControlDropdown(props) {
       }
       
       // Use axiosLib directly to bypass interceptor that converts to response.data
-      const response = await axiosLib.post(url, { parameters }, {
+      const response = await axiosLib.post(url, requestBody, {
         responseType: 'blob',
         xsrfCookieName: 'csrf_token',
         xsrfHeaderName: 'X-CSRF-TOKEN',
@@ -90,6 +97,18 @@ export default function QueryControlDropdown(props) {
     }
   };
 
+  // Handle PDF download with orientation selection
+  const handlePDFDownload = () => {
+    if (isDownloadDisabled) return;
+    
+    PDFOrientationDialog.showModal()
+      .onClose((orientation) => {
+        if (orientation) {
+          handleDownload('pdf', orientation);
+        }
+      });
+  };
+
   const menu = (
     <Menu>
       {!props.query.isNew() && (!props.query.is_draft || !props.query.is_archived) && (
@@ -117,7 +136,7 @@ export default function QueryControlDropdown(props) {
       <Menu.Item disabled={isDownloadDisabled} onClick={() => !isDownloadDisabled && handleDownload('xlsx')}>
         <FileExcelOutlinedIcon /> Download as Excel File
       </Menu.Item> */}
-      <Menu.Item disabled={isDownloadDisabled} onClick={() => !isDownloadDisabled && handleDownload('pdf')}>
+      <Menu.Item disabled={isDownloadDisabled} onClick={handlePDFDownload}>
         <FileExcelOutlinedIcon /> Download as PDF File
       </Menu.Item>
     </Menu>

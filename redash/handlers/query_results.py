@@ -472,9 +472,10 @@ class QueryDownloadResource(BaseResource):
         
         require_access(query.data_source, self.current_user, view_only)
         
-        # Get parameters from request body
+        # Get parameters and orientation from request body
         params = request.get_json(force=True, silent=True) or {}
         parameter_values = params.get("parameters", {})
+        orientation = params.get("orientation", "landscape")  # Default to landscape
         
         # Check permissions
         allow_executing_with_view_only_permissions = query.parameterized.is_safe
@@ -566,7 +567,7 @@ class QueryDownloadResource(BaseResource):
                 content = serialize_data_to_xlsx(query_data)
                 headers = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
             elif filetype == "pdf":
-                content = serialize_data_to_pdf(query_data)
+                content = serialize_data_to_pdf(query_data, orientation=orientation)
                 headers = {"Content-Type": "application/pdf"}
             else:
                 abort(400, message="Invalid file type.")

@@ -30,6 +30,7 @@ import { Query } from "@/services/query";
 import location from "@/services/location";
 import routes from "@/services/routes";
 import axiosLib from "axios";
+import PDFOrientationDialog from "@/components/PDFOrientationDialog";
 
 // import logoUrl from "@/assets/images/redash_icon_small.png";
 
@@ -70,11 +71,17 @@ function VisualizationEmbedFooter({
 }) {
 
   // Download handler that uses new async endpoint
-  const handleDownload = async (fileType) => {
+  const handleDownload = async (fileType, orientation = null) => {
     try {
       onDownloadStart();
       // Get current parameter values
       const parameters = query.getParameters ? query.getParameters().getExecutionValues() : {};
+      
+      // Build request body with parameters and orientation (for PDF)
+      const requestBody = { parameters };
+      if (fileType === 'pdf' && orientation) {
+        requestBody.orientation = orientation;
+      }
       
       // Build URL with API key if needed
       let url = `api/queries/${query.id}/download.${fileType}`;
@@ -83,7 +90,7 @@ function VisualizationEmbedFooter({
       }
       
       // Use axiosLib directly to bypass interceptor that converts to response.data
-      const response = await axiosLib.post(url, { parameters }, {
+      const response = await axiosLib.post(url, requestBody, {
         responseType: 'blob',
         xsrfCookieName: 'csrf_token',
         xsrfHeaderName: 'X-CSRF-TOKEN',
@@ -135,6 +142,16 @@ function VisualizationEmbedFooter({
     }
   };
 
+  // Handle PDF download with orientation selection
+  const handlePDFDownload = () => {
+    PDFOrientationDialog.showModal()
+      .onClose((orientation) => {
+        if (orientation) {
+          handleDownload('pdf', orientation);
+        }
+      });
+  };
+
   const downloadMenu = (
     <Menu>
       <Menu.Item onClick={() => handleDownload('csv')}>
@@ -146,7 +163,7 @@ function VisualizationEmbedFooter({
       {/* <Menu.Item onClick={() => handleDownload('xlsx')}>
         <FileExcelOutlinedIcon /> Download as Excel File
       </Menu.Item> */}
-      <Menu.Item onClick={() => handleDownload('pdf')}>
+      <Menu.Item onClick={handlePDFDownload}>
         <FileExcelOutlinedIcon /> Download as Pdf File
       </Menu.Item>
     </Menu>

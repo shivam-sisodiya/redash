@@ -132,25 +132,34 @@ def serialize_data_to_xlsx(query_data):
 
     return output.getvalue()
 
-def serialize_query_result_to_pdf(query_result):
+def serialize_query_result_to_pdf(query_result, orientation="landscape"):
     query_data = query_result.data if hasattr(query_result, 'data') else query_result
-    return serialize_data_to_pdf(query_data)
+    return serialize_data_to_pdf(query_data, orientation=orientation)
 
 
-def serialize_data_to_pdf(query_data):
-    """Serialize data dict directly to PDF format without QueryResult object."""
+def serialize_data_to_pdf(query_data, orientation="landscape"):
+    """Serialize data dict directly to PDF format without QueryResult object.
+    
+    :param query_data: Dictionary with 'rows' and 'columns' keys
+    :param orientation: 'landscape' or 'portrait' (default: 'landscape')
+    """
     rows = query_data.get("rows") or []
     columns_meta = query_data.get("columns") or []
     column_names = [c["name"] for c in columns_meta[:20]]
 
+    # Determine page dimensions based on orientation
+    if orientation == "portrait":
+        PAGE_W, PAGE_H = 210, 297  # A4 portrait
+        pdf_orientation = "P"
+    else:
+        PAGE_W, PAGE_H = 297, 210  # A4 landscape
+        pdf_orientation = "L"
+
     if not column_names:
-        pdf = FPDF("L")
-        # pdf = FPDF();
+        pdf = FPDF(pdf_orientation)
         return pdf.output(dest="S").encode("latin1")
 
     # ------------------ CONFIG --------------------
-    PAGE_W, PAGE_H = 297, 210          # A4 landscape
-    # PAGE_W, PAGE_H = 210, 297
     LEFT, RIGHT = 5, 5
     TOP, BOTTOM = 10, 10
     AVAILABLE_W = PAGE_W - LEFT - RIGHT
@@ -167,8 +176,7 @@ def serialize_data_to_pdf(query_data):
     DATA_FONT = ("Arial", "", 8)
 
     # ------------- BUILD PDF ----------------------
-    pdf = FPDF("L")
-    # pdf = FPDF();
+    pdf = FPDF(pdf_orientation)
     pdf.add_page()
     pdf.set_left_margin(LEFT)
     pdf.set_right_margin(RIGHT)
