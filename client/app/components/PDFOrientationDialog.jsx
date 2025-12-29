@@ -6,7 +6,7 @@ import Radio from "antd/lib/radio";
 import { wrap as wrapDialog, DialogPropType } from "@/components/DialogWrapper";
 
 function PDFOrientationDialog({ dialog }) {
-  const [orientation, setOrientation] = useState("landscape"); // Default to landscape
+  const [orientation, setOrientation] = useState("portrait"); // Default to portrait
 
   const handleOk = () => {
     dialog.close(orientation);
