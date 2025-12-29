@@ -475,7 +475,7 @@ class QueryDownloadResource(BaseResource):
         # Get parameters and orientation from request body
         params = request.get_json(force=True, silent=True) or {}
         parameter_values = params.get("parameters", {})
-        orientation = params.get("orientation", "landscape")  # Default to landscape
+        orientation = params.get("orientation", "portrait")  # Default to portrait
         
         # Check permissions
         allow_executing_with_view_only_permissions = query.parameterized.is_safe

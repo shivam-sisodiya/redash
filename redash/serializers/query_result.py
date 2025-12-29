@@ -132,16 +132,16 @@ def serialize_data_to_xlsx(query_data):
 
     return output.getvalue()
 
-def serialize_query_result_to_pdf(query_result, orientation="landscape"):
+def serialize_query_result_to_pdf(query_result, orientation="portrait"):
     query_data = query_result.data if hasattr(query_result, 'data') else query_result
     return serialize_data_to_pdf(query_data, orientation=orientation)
 
 
-def serialize_data_to_pdf(query_data, orientation="landscape"):
+def serialize_data_to_pdf(query_data, orientation="portrait"):
     """Serialize data dict directly to PDF format without QueryResult object.
     
     :param query_data: Dictionary with 'rows' and 'columns' keys
-    :param orientation: 'landscape' or 'portrait' (default: 'landscape')
+    :param orientation: 'landscape' or 'portrait' (default: 'portrait')
     """
     rows = query_data.get("rows") or []
     columns_meta = query_data.get("columns") or []
