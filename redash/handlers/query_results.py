@@ -397,7 +397,7 @@ class QueryResultResource(BaseResource):
                 "csv": self.make_csv_response,
                 "tsv": self.make_tsv_response,
             }
-            response = response_builders[filetype](query_result)
+            response = response_builders[filetype](query_result, query=query)
 
             if len(settings.ACCESS_CONTROL_ALLOW_ORIGIN) > 0:
                 self.add_cors_headers(response.headers)
@@ -416,30 +416,30 @@ class QueryResultResource(BaseResource):
             abort(404, message="No cached result found for this query.")
 
     @staticmethod
-    def make_json_response(query_result):
+    def make_json_response(query_result, query=None):
         data = json_dumps({"query_result": query_result.to_dict()})
         headers = {"Content-Type": "application/json"}
         return make_response(data, 200, headers)
 
     @staticmethod
-    def make_csv_response(query_result):
+    def make_csv_response(query_result, query=None):
         headers = {"Content-Type": "text/csv; charset=UTF-8"}
-        return make_response(serialize_query_result_to_dsv(query_result, ","), 200, headers)
+        return make_response(serialize_query_result_to_dsv(query_result, ",", query=query), 200, headers)
 
     @staticmethod
-    def make_tsv_response(query_result):
+    def make_tsv_response(query_result, query=None):
         headers = {"Content-Type": "text/tab-separated-values; charset=UTF-8"}
-        return make_response(serialize_query_result_to_dsv(query_result, "\t"), 200, headers)
+        return make_response(serialize_query_result_to_dsv(query_result, "\t", query=query), 200, headers)
 
     @staticmethod
-    def make_excel_response(query_result):
+    def make_excel_response(query_result, query=None):
         headers = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
         return make_response(serialize_query_result_to_xlsx(query_result), 200, headers)
 
     @staticmethod
-    def make_pdf_response(query_result):
+    def make_pdf_response(query_result, query=None):
         headers = {"Content-Type": "application/pdf"}
-        return make_response(serialize_query_result_to_pdf(query_result), 200, headers)
+        return make_response(serialize_query_result_to_pdf(query_result, query=query), 200, headers)
 
 class QueryDownloadResource(BaseResource):
     @require_any_of_permission(("view_query", "execute_query"))
@@ -556,18 +556,22 @@ class QueryDownloadResource(BaseResource):
             query_data = job_result["data"]
             retrieved_at = job_result.get("retrieved_at")
             
+            # Get query name and timestamp for metadata
+            query_name = query.name if query else None
+            timestamp = retrieved_at if retrieved_at else utcnow()
+            
             # Serialize data directly to file format
             if filetype == "csv":
-                content = serialize_data_to_dsv(query_data, ",")
+                content = serialize_data_to_dsv(query_data, ",", query_name=query_name, timestamp=timestamp)
                 headers = {"Content-Type": "text/csv; charset=UTF-8"}
             elif filetype == "tsv":
-                content = serialize_data_to_dsv(query_data, "\t")
+                content = serialize_data_to_dsv(query_data, "\t", query_name=query_name, timestamp=timestamp)
                 headers = {"Content-Type": "text/tab-separated-values; charset=UTF-8"}
             elif filetype == "xlsx":
                 content = serialize_data_to_xlsx(query_data)
                 headers = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
             elif filetype == "pdf":
-                content = serialize_data_to_pdf(query_data, orientation=orientation)
+                content = serialize_data_to_pdf(query_data, orientation=orientation, query_name=query_name, timestamp=timestamp)
                 headers = {"Content-Type": "application/pdf"}
             else:
                 abort(400, message="Invalid file type.")
@@ -604,7 +608,7 @@ class QueryDownloadResource(BaseResource):
                 "pdf": QueryResultResource.make_pdf_response,
             }
             
-            response = response_builders[filetype](query_result)
+            response = response_builders[filetype](query_result, query=query)
             
             # Add CORS headers if needed
             if len(settings.ACCESS_CONTROL_ALLOW_ORIGIN) > 0:
