@@ -80,10 +80,42 @@ def serialize_query_result(query_result, is_api_user):
         return query_result.to_dict()
 
 
-def serialize_query_result_to_dsv(query_result, delimiter):
-    s = io.StringIO()
+def serialize_query_result_to_dsv(query_result, delimiter, query=None):
+    query_data = query_result.data if hasattr(query_result, 'data') else query_result
+    # Get query name and timestamp
+    query_name = None
+    timestamp = None
+    if query and hasattr(query, 'name'):
+        query_name = query.name
+    if hasattr(query_result, 'retrieved_at'):
+        timestamp = query_result.retrieved_at
+    return serialize_data_to_dsv(query_data, delimiter, query_name=query_name, timestamp=timestamp)
 
-    query_data = query_result.data
+
+def serialize_data_to_dsv(query_data, delimiter, query_name=None, timestamp=None):
+    """Serialize data dict directly to DSV format (CSV/TSV) without QueryResult object.
+    
+    :param query_data: Dictionary with 'rows' and 'columns' keys
+    :param delimiter: Delimiter character (',' for CSV, '\t' for TSV)
+    :param query_name: Optional query/report name to include in metadata
+    :param timestamp: Optional timestamp of report generation
+    """
+    s = io.StringIO()
+    writer = csv.writer(s, delimiter=delimiter)
+
+    # Write metadata rows at the start
+    if query_name is not None or timestamp is not None:
+        writer.writerow(["TELANGANA STATE ROAD TRANSPORT CORPORATION"])
+        if query_name:
+            writer.writerow([query_name])
+        if timestamp:
+            # Format timestamp nicely
+            if hasattr(timestamp, 'strftime'):
+                timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                timestamp_str = str(timestamp)
+            writer.writerow([timestamp_str])
+        writer.writerow([])  # Empty row separator
 
     fieldnames, special_columns = _get_column_lists(query_data["columns"] or [])
 
@@ -101,9 +133,14 @@ def serialize_query_result_to_dsv(query_result, delimiter):
 
 
 def serialize_query_result_to_xlsx(query_result):
+    query_data = query_result.data if hasattr(query_result, 'data') else query_result
+    return serialize_data_to_xlsx(query_data)
+
+
+def serialize_data_to_xlsx(query_data):
+    """Serialize data dict directly to XLSX format without QueryResult object."""
     output = io.BytesIO()
 
-    query_data = query_result.data
     book = xlsxwriter.Workbook(output, {"constant_memory": True})
     sheet = book.add_worksheet("result")
 
@@ -123,20 +160,43 @@ def serialize_query_result_to_xlsx(query_result):
 
     return output.getvalue()
 
-def serialize_query_result_to_pdf(query_result):
-    query_data = query_result.data
+def serialize_query_result_to_pdf(query_result, orientation="portrait", query=None):
+    query_data = query_result.data if hasattr(query_result, 'data') else query_result
+    # Get query name and timestamp
+    query_name = None
+    timestamp = None
+    if query and hasattr(query, 'name'):
+        query_name = query.name
+    if hasattr(query_result, 'retrieved_at'):
+        timestamp = query_result.retrieved_at
+    return serialize_data_to_pdf(query_data, orientation=orientation, query_name=query_name, timestamp=timestamp)
+
+
+def serialize_data_to_pdf(query_data, orientation="portrait", query_name=None, timestamp=None):
+    """Serialize data dict directly to PDF format without QueryResult object.
+    
+    :param query_data: Dictionary with 'rows' and 'columns' keys
+    :param orientation: 'landscape' or 'portrait' (default: 'portrait')
+    :param query_name: Optional query/report name to include in metadata
+    :param timestamp: Optional timestamp of report generation
+    """
     rows = query_data.get("rows") or []
     columns_meta = query_data.get("columns") or []
     column_names = [c["name"] for c in columns_meta[:20]]
 
+    # Determine page dimensions based on orientation
+    if orientation == "portrait":
+        PAGE_W, PAGE_H = 210, 297  # A4 portrait
+        pdf_orientation = "P"
+    else:
+        PAGE_W, PAGE_H = 297, 210  # A4 landscape
+        pdf_orientation = "L"
+
     if not column_names:
-        pdf = FPDF("L")
-        # pdf = FPDF();
+        pdf = FPDF(pdf_orientation)
         return pdf.output(dest="S").encode("latin1")
 
     # ------------------ CONFIG --------------------
-    PAGE_W, PAGE_H = 297, 210          # A4 landscape
-    # PAGE_W, PAGE_H = 210, 297
     LEFT, RIGHT = 5, 5
     TOP, BOTTOM = 10, 10
     AVAILABLE_W = PAGE_W - LEFT - RIGHT
@@ -151,15 +211,54 @@ def serialize_query_result_to_pdf(query_result):
 
     HEADER_FONT = ("Arial", "B", 8)
     DATA_FONT = ("Arial", "", 8)
+    METADATA_FONT = ("Arial", "B", 12)
+    METADATA_TITLE_FONT = ("Arial", "B", 10)
 
     # ------------- BUILD PDF ----------------------
-    pdf = FPDF("L")
-    # pdf = FPDF();
+    pdf = FPDF(pdf_orientation)
     pdf.add_page()
     pdf.set_left_margin(LEFT)
     pdf.set_right_margin(RIGHT)
     pdf.set_y(TOP)
     pdf.set_auto_page_break(auto=False)
+    
+    # Add metadata at the top (centered)
+    current_y = TOP
+    if query_name is not None or timestamp is not None:
+        # Organization name (centered, bold, larger font)
+        pdf.set_font(*METADATA_FONT)
+        org_text = "TELANGANA STATE ROAD TRANSPORT CORPORATION"
+        text_width = pdf.get_string_width(org_text)
+        x_center = (PAGE_W - text_width) / 2
+        pdf.set_xy(x_center, current_y)
+        pdf.cell(text_width, 8, org_text, border=0, align="C")
+        current_y += 10
+        
+        # Report title/name
+        pdf.set_font(*METADATA_TITLE_FONT)
+        if query_name:
+            title_text = f"{query_name}"
+        text_width = pdf.get_string_width(title_text)
+        x_center = (PAGE_W - text_width) / 2
+        pdf.set_xy(x_center, current_y)
+        pdf.cell(text_width, 6, title_text, border=0, align="C")
+        current_y += 8
+        
+        # Timestamp
+        if timestamp:
+            if hasattr(timestamp, 'strftime'):
+                timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                timestamp_str = str(timestamp)
+            time_text = f"{timestamp_str}"
+        text_width = pdf.get_string_width(time_text)
+        x_center = (PAGE_W - text_width) / 2
+        pdf.set_xy(x_center, current_y)
+        pdf.cell(text_width, 6, time_text, border=0, align="C")
+        current_y += 12  # Extra space before table
+    
+    # Set Y position for table
+    pdf.set_y(current_y)
 
     # ------------- HELPERS -------------------------
 

@@ -31,6 +31,9 @@ from redash.serializers import (
     serialize_query_result_to_dsv,
     serialize_query_result_to_xlsx,
     serialize_query_result_to_pdf,
+    serialize_data_to_dsv,
+    serialize_data_to_xlsx,
+    serialize_data_to_pdf,
 )
 from redash.tasks import Job
 from redash.tasks.queries import enqueue_query
@@ -38,6 +41,7 @@ from redash.utils import (
     collect_parameters_from_request,
     json_dumps,
     to_filename,
+    utcnow,
 )
 import re
 from redash.query_runner import split_sql_statements, combine_sql_statements
@@ -88,7 +92,7 @@ error_messages = {
 }
 
 
-def run_query(query, parameters, data_source, query_id, should_apply_auto_limit, max_age=0, remove_limit=False):
+def run_query(query, parameters, data_source, query_id, should_apply_auto_limit, max_age=0, remove_limit=False, is_download=False):
     if not data_source:
         return error_messages["no_data_source"]
 
@@ -143,6 +147,7 @@ def run_query(query, parameters, data_source, query_id, should_apply_auto_limit,
             metadata={
                 "Username": current_user.get_actual_user(),
                 "query_id": query_id,
+                "is_download": is_download,
             },
         )
         return serialize_job(job)
@@ -392,7 +397,7 @@ class QueryResultResource(BaseResource):
                 "csv": self.make_csv_response,
                 "tsv": self.make_tsv_response,
             }
-            response = response_builders[filetype](query_result)
+            response = response_builders[filetype](query_result, query=query)
 
             if len(settings.ACCESS_CONTROL_ALLOW_ORIGIN) > 0:
                 self.add_cors_headers(response.headers)
@@ -411,30 +416,30 @@ class QueryResultResource(BaseResource):
             abort(404, message="No cached result found for this query.")
 
     @staticmethod
-    def make_json_response(query_result):
+    def make_json_response(query_result, query=None):
         data = json_dumps({"query_result": query_result.to_dict()})
         headers = {"Content-Type": "application/json"}
         return make_response(data, 200, headers)
 
     @staticmethod
-    def make_csv_response(query_result):
+    def make_csv_response(query_result, query=None):
         headers = {"Content-Type": "text/csv; charset=UTF-8"}
-        return make_response(serialize_query_result_to_dsv(query_result, ","), 200, headers)
+        return make_response(serialize_query_result_to_dsv(query_result, ",", query=query), 200, headers)
 
     @staticmethod
-    def make_tsv_response(query_result):
+    def make_tsv_response(query_result, query=None):
         headers = {"Content-Type": "text/tab-separated-values; charset=UTF-8"}
-        return make_response(serialize_query_result_to_dsv(query_result, "\t"), 200, headers)
+        return make_response(serialize_query_result_to_dsv(query_result, "\t", query=query), 200, headers)
 
     @staticmethod
-    def make_excel_response(query_result):
+    def make_excel_response(query_result, query=None):
         headers = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
         return make_response(serialize_query_result_to_xlsx(query_result), 200, headers)
 
     @staticmethod
-    def make_pdf_response(query_result):
+    def make_pdf_response(query_result, query=None):
         headers = {"Content-Type": "application/pdf"}
-        return make_response(serialize_query_result_to_pdf(query_result), 200, headers)
+        return make_response(serialize_query_result_to_pdf(query_result, query=query), 200, headers)
 
 class QueryDownloadResource(BaseResource):
     @require_any_of_permission(("view_query", "execute_query"))
@@ -467,9 +472,10 @@ class QueryDownloadResource(BaseResource):
         
         require_access(query.data_source, self.current_user, view_only)
         
-        # Get parameters from request body
+        # Get parameters and orientation from request body
         params = request.get_json(force=True, silent=True) or {}
         parameter_values = params.get("parameters", {})
+        orientation = params.get("orientation", "portrait")  # Default to portrait
         
         # Check permissions
         allow_executing_with_view_only_permissions = query.parameterized.is_safe
@@ -494,6 +500,7 @@ class QueryDownloadResource(BaseResource):
             should_apply_auto_limit,
             max_age=0,  # Always execute fresh
             remove_limit=True,  # Remove LIMIT clauses for downloads
+            is_download=True,  # Skip database storage for downloads
         )
         
         # Check if we got a job (query was enqueued)
@@ -516,10 +523,12 @@ class QueryDownloadResource(BaseResource):
                 
                 # Check if job is done
                 if job_status == JobStatus.FINISHED:
-                    # Get query_result_id from job result
-                    query_result_id = job.result
-                    if not query_result_id:
-                        abort(500, message="Job completed but no result ID found.")
+                    # Job result can be either:
+                    # 1. A dict with "data" key (for downloads - data not stored in DB)
+                    # 2. A query_result_id (integer) for normal queries
+                    job_result = job.result
+                    if not job_result:
+                        abort(500, message="Job completed but no result found.")
                     break
                 elif job_status == JobStatus.FAILED:
                     error = "Query execution failed."
@@ -535,39 +544,82 @@ class QueryDownloadResource(BaseResource):
                 time.sleep(poll_interval)
         elif "query_result" in result:
             # Got cached result (shouldn't happen with max_age=0, but handle it)
+            # For cached results, we still need to load from DB
             query_result_id = result["query_result"]["id"]
+            job_result = query_result_id
         else:
             abort(500, message="Unexpected response from query execution.")
         
-        # Load query result from database
-        query_result = get_object_or_404(
-            models.QueryResult.get_by_id_and_org,
-            query_result_id,
-            self.current_org,
-        )
-        
-        require_access(query_result.data_source, self.current_user, view_only)
-        
-        # Convert to file format
-        response_builders = {
-            "csv": QueryResultResource.make_csv_response,
-            "tsv": QueryResultResource.make_tsv_response,
-            "xlsx": QueryResultResource.make_excel_response,
-            "pdf": QueryResultResource.make_pdf_response,
-        }
-        
-        response = response_builders[filetype](query_result)
-        
-        # Add CORS headers if needed
-        if len(settings.ACCESS_CONTROL_ALLOW_ORIGIN) > 0:
-            QueryResultResource.add_cors_headers(response.headers)
-        
-        # Set download filename
-        filename = get_download_filename(query_result, query, filetype)
-        filenames = content_disposition_filenames(filename)
-        response.headers.add("Content-Disposition", "attachment", **filenames)
-        
-        return response
+        # Check if job result is a data dict (download) or query_result_id (normal query)
+        if isinstance(job_result, dict) and "data" in job_result:
+            # Download case: data is in job result, not stored in DB
+            query_data = job_result["data"]
+            retrieved_at = job_result.get("retrieved_at")
+            
+            # Get query name and timestamp for metadata
+            query_name = query.name if query else None
+            timestamp = retrieved_at if retrieved_at else utcnow()
+            
+            # Serialize data directly to file format
+            if filetype == "csv":
+                content = serialize_data_to_dsv(query_data, ",", query_name=query_name, timestamp=timestamp)
+                headers = {"Content-Type": "text/csv; charset=UTF-8"}
+            elif filetype == "tsv":
+                content = serialize_data_to_dsv(query_data, "\t", query_name=query_name, timestamp=timestamp)
+                headers = {"Content-Type": "text/tab-separated-values; charset=UTF-8"}
+            elif filetype == "xlsx":
+                content = serialize_data_to_xlsx(query_data)
+                headers = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+            elif filetype == "pdf":
+                content = serialize_data_to_pdf(query_data, orientation=orientation, query_name=query_name, timestamp=timestamp)
+                headers = {"Content-Type": "application/pdf"}
+            else:
+                abort(400, message="Invalid file type.")
+            
+            response = make_response(content, 200, headers)
+            
+            # Set download filename
+            retrieved_at_str = retrieved_at.strftime("%Y_%m_%d") if retrieved_at else utcnow().strftime("%Y_%m_%d")
+            filename = "{}_{}.{}".format(to_filename(query.name), retrieved_at_str, filetype)
+            filenames = content_disposition_filenames(filename)
+            response.headers.add("Content-Disposition", "attachment", **filenames)
+            
+            # Add CORS headers if needed
+            if len(settings.ACCESS_CONTROL_ALLOW_ORIGIN) > 0:
+                QueryResultResource.add_cors_headers(response.headers)
+            
+            return response
+        else:
+            # Normal case: load query result from database
+            query_result_id = job_result if isinstance(job_result, int) else job_result
+            query_result = get_object_or_404(
+                models.QueryResult.get_by_id_and_org,
+                query_result_id,
+                self.current_org,
+            )
+            
+            require_access(query_result.data_source, self.current_user, view_only)
+            
+            # Convert to file format
+            response_builders = {
+                "csv": QueryResultResource.make_csv_response,
+                "tsv": QueryResultResource.make_tsv_response,
+                "xlsx": QueryResultResource.make_excel_response,
+                "pdf": QueryResultResource.make_pdf_response,
+            }
+            
+            response = response_builders[filetype](query_result, query=query)
+            
+            # Add CORS headers if needed
+            if len(settings.ACCESS_CONTROL_ALLOW_ORIGIN) > 0:
+                QueryResultResource.add_cors_headers(response.headers)
+            
+            # Set download filename
+            filename = get_download_filename(query_result, query, filetype)
+            filenames = content_disposition_filenames(filename)
+            response.headers.add("Content-Disposition", "attachment", **filenames)
+            
+            return response
 
 
 class JobResource(BaseResource):
